@@ -31,9 +31,10 @@ ENTRY(relocate_new_kernel)
 	.previous
 
 	.chip 68030
-	pmove %tc,%d0			/* Disable MMU */
-	bclr #7,%d0
-	pmove %d0,%tc
+	/* TC via the (unused) return address slot: bit 7 of byte 0 is E */
+	pmove %tc,%sp@			/* Disable MMU */
+	bclr #7,%sp@
+	pmove %sp@,%tc
 	jmp %a4@			/* Jump to physical .Lcopy */
 	.chip 68k
 
