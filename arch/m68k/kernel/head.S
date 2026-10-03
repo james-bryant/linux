@@ -256,6 +256,7 @@
 #include <asm/bootinfo-amiga.h>
 #include <asm/bootinfo-atari.h>
 #include <asm/bootinfo-hp300.h>
+#include <asm/bootinfo-lab030.h>
 #include <asm/bootinfo-mac.h>
 #include <asm/bootinfo-q40.h>
 #include <asm/bootinfo-virt.h>
@@ -532,6 +533,7 @@ func_define	putn,1
 #define is_not_q40(lab) cmpl &MACH_Q40,%pc@(m68k_machtype); jne lab
 #define is_not_sun3x(lab) cmpl &MACH_SUN3X,%pc@(m68k_machtype); jne lab
 #define is_not_virt(lab) cmpl &MACH_VIRT,%pc@(m68k_machtype); jne lab
+#define is_not_lab030(lab) cmpl &MACH_LAB030,%pc@(m68k_machtype); jne lab
 
 #define hasnt_leds(lab) cmpl &MACH_HP300,%pc@(m68k_machtype); \
 			jeq 42f; \
@@ -1248,6 +1250,14 @@ L(notsun3x):
 	mmu_map_tt	#1,#0xFF000000,#0x01000000,#_PAGE_NOCACHE_S
 	jbra    L(mmu_init_done)
 L(novirt):
+#endif
+
+#ifdef CONFIG_LAB030
+	is_not_lab030(L(notlab030))
+	/* all board I/O is in the top 16 MiB */
+	mmu_map_tt	#1,#0xff000000,#0x01000000,#_PAGE_NOCACHE030
+	jbra	L(mmu_init_done)
+L(notlab030):
 #endif
 
 #ifdef CONFIG_APOLLO

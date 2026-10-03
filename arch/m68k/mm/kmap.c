@@ -185,6 +185,12 @@ void __iomem *__ioremap(unsigned long physaddr, unsigned long size, int cachefla
 			return (void __iomem *)physaddr;
 	}
 #endif
+#ifdef CONFIG_LAB030
+	if (MACH_IS_LAB030) {
+		if (physaddr >= 0xff000000 && cacheflag == IOMAP_NOCACHE_SER)
+			return (void __iomem *)physaddr;
+	}
+#endif
 #ifdef CONFIG_COLDFIRE
 	if (__cf_internalio(physaddr))
 		return (void __iomem *) physaddr;
@@ -306,6 +312,10 @@ void iounmap(void __iomem *addr)
 #endif
 #ifdef CONFIG_VIRT
 	if (MACH_IS_VIRT && (unsigned long)addr >= 0xff000000)
+		return;
+#endif
+#ifdef CONFIG_LAB030
+	if (MACH_IS_LAB030 && (unsigned long)addr >= 0xff000000)
 		return;
 #endif
 #ifdef CONFIG_COLDFIRE

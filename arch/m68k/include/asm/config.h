@@ -24,6 +24,7 @@ extern void config_apollo(void);
 extern void config_atari(void);
 extern void config_bvme6000(void);
 extern void config_hp300(void);
+void config_lab030(void);
 extern void config_mac(void);
 extern void config_mvme147(void);
 extern void config_mvme16x(void);

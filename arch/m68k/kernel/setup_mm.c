@@ -323,6 +323,11 @@ void __init setup_arch(char **cmdline_p)
 		config_virt();
 		break;
 #endif
+#ifdef CONFIG_LAB030
+	case MACH_LAB030:
+		config_lab030();
+		break;
+#endif
 	default:
 		panic("No configuration setup");
 	}
