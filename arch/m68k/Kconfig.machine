@@ -148,15 +148,16 @@ config LAB030
 	bool "m68030-lab board support"
 	depends on MMU
 	select GENERIC_CLOCKEVENTS
+	select HAVE_PATA_PLATFORM
 	select M68030
 	select M68KFPU_EMU
 	help
 	  This option enables support for the m68030-lab board, a
 	  single-board computer built around an MC68030 with RAM at
 	  physical address 0, a CPLD that provides the 100 Hz timer tick
-	  and the board reset, and a 16550A console UART.  The board has no
-	  FPU, so the kernel's math emulation (M68KFPU_EMU) is always built
-	  in.
+	  and the board reset, a 16550A console UART and a CompactFlash
+	  socket.  The board has no FPU, so the kernel's math emulation
+	  (M68KFPU_EMU) is always built in.
 
 	  The board is still being designed.  Its address map, its CPLD
 	  registers and the machine number it boots with are provisional,

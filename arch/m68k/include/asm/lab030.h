@@ -35,4 +35,15 @@
 #define LAB030_UART_REGSHIFT		2
 #define LAB030_UART_CLOCK_FREQ		1843200
 
+/*
+ * CompactFlash socket in true-IDE mode: one register every two bytes.  The
+ * control block has a single register, device control and alternate status.
+ */
+#define LAB030_CF_CMD_BASE		0xff040000
+#define LAB030_CF_CMD_SIZE		0x10
+#define LAB030_CF_CTL_BASE		0xff050000
+#define LAB030_CF_CTL_DEVCTL		0x0c
+#define LAB030_CF_CTL_DEVCTL_SIZE	0x2
+#define LAB030_CF_REGSHIFT		1
+
 #endif /* _ASM_M68K_LAB030_H */

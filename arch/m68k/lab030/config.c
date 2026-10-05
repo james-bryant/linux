@@ -10,6 +10,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
+#include <linux/ata_platform.h>
 #include <linux/serial_8250.h>
 #include <linux/serial_core.h>
 #include <linux/timex.h>
@@ -179,6 +180,21 @@ static const struct plat_serial8250_port lab030_uart_data[] __initconst = {
 	{ }
 };
 
+/*
+ * pata_platform takes the address of the device control register itself as
+ * its control resource.
+ */
+static const struct resource lab030_cf_resources[] __initconst = {
+	DEFINE_RES_MEM(LAB030_CF_CMD_BASE, LAB030_CF_CMD_SIZE),
+	DEFINE_RES_MEM(LAB030_CF_CTL_BASE + LAB030_CF_CTL_DEVCTL,
+		       LAB030_CF_CTL_DEVCTL_SIZE),
+	DEFINE_RES_IRQ(IRQ_AUTO_3),
+};
+
+static const struct pata_platform_info lab030_cf_data __initconst = {
+	.ioport_shift	= LAB030_CF_REGSHIFT,
+};
+
 static int __init lab030_platform_init(void)
 {
 	struct platform_device *pdev;
@@ -190,6 +206,15 @@ static int __init lab030_platform_init(void)
 					     PLAT8250_DEV_PLATFORM,
 					     lab030_uart_data,
 					     sizeof(lab030_uart_data));
+	if (IS_ERR(pdev))
+		return PTR_ERR(pdev);
+
+	pdev = platform_device_register_resndata(NULL, "pata_platform",
+						 PLATFORM_DEVID_NONE,
+						 lab030_cf_resources,
+						 ARRAY_SIZE(lab030_cf_resources),
+						 &lab030_cf_data,
+						 sizeof(lab030_cf_data));
 
 	return PTR_ERR_OR_ZERO(pdev);
 }
