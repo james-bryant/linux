@@ -464,11 +464,12 @@ fp_fdsub:
 	fp_dodoubleprec fp_fsub
 
 fp_nonstd:
+#ifdef FPU_EMU_DEBUG
 	fp_get_pc %a0
 	getuser.l (%a0),%d0,fp_err_ua1,%a0
 	printf	,"nonstd ((%08x)=%08x)\n",2,%a0,%d0
-	moveq	#-1,%d0
-	rts
+#endif
+	jra	fp_err_nonstd
 
 	.data
 	.align	4

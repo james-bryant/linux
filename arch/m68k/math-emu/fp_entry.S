@@ -42,7 +42,7 @@
 
 	.globl	fpu_emu
 	.globl	fp_debugprint
-	.globl	fp_err_ua1,fp_err_ua2
+	.globl	fp_err_ua1,fp_err_ua2,fp_err_nonstd
 
 	.text
 fpu_emu:
@@ -89,6 +89,17 @@ fp_err_ua1:
 	pea	LSIGSEGV
 	jsr	fpemu_signal
 	add.w	#12,%sp
+	jra	ret_from_exception
+
+	| we jump here for an instruction that is not for the fpu, we
+	| correct stackpointer and handle it as the line 1111 exception
+	| of a machine with an fpu, which sends a SIGILL to the user
+	| process
+fp_err_nonstd:
+	addq.l	#4,%sp
+	move.l	%sp,-(%sp)		| stack frame pointer argument
+	jsr	trap_c
+	addq.l	#4,%sp
 	jra	ret_from_exception
 
 #if defined(CONFIG_M68060)
