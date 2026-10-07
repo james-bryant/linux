@@ -105,17 +105,15 @@ static inline int fp_addmant(struct fp_ext *dest, struct fp_ext *src)
 
 static inline int fp_addcarry(struct fp_ext *reg)
 {
-	if (++reg->exp == 0x7fff) {
-		if (reg->mant.m64)
-			fp_set_sr(FPSR_EXC_INEX2);
-		reg->mant.m64 = 0;
-		fp_set_sr(FPSR_EXC_OVFL);
-		return 0;
-	}
+	/* shift the carry in first: fp_set_ovrflw() reads the mantissa */
 	reg->lowmant = (reg->mant.m32[1] << 7) | (reg->lowmant ? 1 : 0);
 	reg->mant.m32[1] = (reg->mant.m32[1] >> 1) |
 			   (reg->mant.m32[0] << 31);
 	reg->mant.m32[0] = (reg->mant.m32[0] >> 1) | 0x80000000;
+	if (++reg->exp == 0x7fff) {
+		fp_set_ovrflw(reg);
+		return 0;
+	}
 
 	return 1;
 }

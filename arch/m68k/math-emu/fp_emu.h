@@ -118,11 +118,28 @@ extern const struct fp_ext fp_Inf;
 	*dest = fp_QNaN;					\
 })
 
-/* TODO check rounding mode? */
+/*
+ * An overflow: an infinity, or the largest number in a rounding mode
+ * that rounds a number of this sign toward zero.  It is inexact if the
+ * normalized mantissa has bits below those of the rounding precision.
+ */
 #define fp_set_ovrflw(dest) ({					\
+	struct fp_ext *__dest = (dest);				\
+								\
 	fp_set_sr(FPSR_EXC_OVFL);				\
-	dest->exp = 0x7fff;					\
-	dest->mant.m64 = 0;					\
+	if (__dest->lowmant || (FPDATA->prec &&			\
+	    (__dest->mant.m64 & (FPDATA->prec == 1 ?		\
+				 0xffffffffffULL : 0x7ffULL))))	\
+		fp_set_sr(FPSR_EXC_INEX2);			\
+	__dest->lowmant = 0;					\
+	if (FPDATA->rnd == FPCR_ROUND_RZ || FPDATA->rnd ==	\
+	    (__dest->sign ? FPCR_ROUND_RP : FPCR_ROUND_RM)) {	\
+		__dest->exp = 0x7ffe;				\
+		__dest->mant.m64 = ~0ULL;			\
+	} else {						\
+		__dest->exp = 0x7fff;				\
+		__dest->mant.m64 = 0;				\
+	}							\
 })
 
 #define fp_conv_ext2long(src) ({				\

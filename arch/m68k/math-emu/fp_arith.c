@@ -370,6 +370,9 @@ struct fp_ext *fp_fsglmul(struct fp_ext *dest, struct fp_ext *src)
 
 	fp_dyadic_check(dest, src);
 
+	/* what an earlier instruction left there is not for fp_set_ovrflw() */
+	dest->lowmant = 0;
+
 	/* calculate the correct sign now, as it's necessary for infinities */
 	dest->sign = src->sign ^ dest->sign;
 
@@ -427,6 +430,9 @@ struct fp_ext *fp_fsglmul(struct fp_ext *dest, struct fp_ext *src)
 	}
 
 	if (exp >= 0x7fff) {
+		/* the bits that single precision drops make it inexact */
+		if ((dest->mant.m32[0] & 0xff) | dest->mant.m32[1])
+			dest->lowmant = 1;
 		fp_set_ovrflw(dest);
 		return dest;
 	}
@@ -447,6 +453,9 @@ struct fp_ext *fp_fsgldiv(struct fp_ext *dest, struct fp_ext *src)
 	dprint(PINSTR, "fsgldiv\n");
 
 	fp_dyadic_check(dest, src);
+
+	/* what an earlier instruction left there is not for fp_set_ovrflw() */
+	dest->lowmant = 0;
 
 	/* calculate the correct sign now, as it's necessary for infinities */
 	dest->sign = src->sign ^ dest->sign;
@@ -514,6 +523,9 @@ struct fp_ext *fp_fsgldiv(struct fp_ext *dest, struct fp_ext *src)
 	}
 
 	if (exp >= 0x7fff) {
+		/* the bits that single precision drops make it inexact */
+		if ((dest->mant.m32[0] & 0xff) | dest->mant.m32[1])
+			dest->lowmant = 1;
 		fp_set_ovrflw(dest);
 		return dest;
 	}
@@ -743,6 +755,9 @@ struct fp_ext *fp_fscale(struct fp_ext *dest, struct fp_ext *src)
 	dprint(PINSTR, "fscale\n");
 
 	fp_dyadic_check(dest, src);
+
+	/* what an earlier instruction left there is not for fp_set_ovrflw() */
+	dest->lowmant = 0;
 
 	/* Infinities */
 	if (IS_INF(src)) {

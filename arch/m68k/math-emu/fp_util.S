@@ -473,6 +473,11 @@ fp_ne_doroundup:
 	jcc	9f
 	addq.w	#1,(2,%a0)
 	move.w	#0x8000,(4,%a0)
+	cmp.w	#0x7fff,(2,%a0)		| exponent carried out of range?
+	jne	9f
+	| rounding away from zero made the result an infinity: an overflow
+	fp_set_sr FPSR_EXC_OVFL
+	clr.l	(4,%a0)			| a clean infinity
 9:	printf	PNORM,"%p(",1,%a0
 	printx	PNORM,%a0@
 	printf	PNORM,")\n"
