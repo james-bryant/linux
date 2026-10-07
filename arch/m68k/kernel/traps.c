@@ -558,10 +558,32 @@ static inline void bus_error030 (struct frame *fp)
 			if (do_page_fault (&fp->ptregs, addr, errorcode) < 0)
 				return;
 		} else if (!(mmusr & MMU_I)) {
-			/* probably a 020 cas fault */
-			if (!(ssw & RM) && send_fault_sig(&fp->ptregs) > 0)
-				pr_err("unexpected bus error (%#x,%#x)\n", ssw,
-				       mmusr);
+			/*
+			 * The tables allow this access, so either the ATC
+			 * entry is stale or external logic ended the cycle
+			 * with BERR.  A read-modify-write cycle is always
+			 * rerun: the manual's example handler reloads the
+			 * ATC for one that found no entry (the "020 cas
+			 * fault"), and BERR on a locked cycle may merely
+			 * be a request to give up the bus.  For any other
+			 * cycle an ATC entry that allows it means that the
+			 * MMU let it run: a physical bus error.
+			 */
+			if (!(ssw & RM)) {
+				asm volatile ("ptestr %2,%1@,#0\n\t"
+					      "pmove %%psr,%0"
+					      : "=m" (temp)
+					      : "a" (addr), "d" (ssw));
+				mmusr = temp;
+				if (!(mmusr & (MMU_B | MMU_I)) &&
+				    ((ssw & RW) || !(mmusr & MMU_WP))) {
+					current->thread.signo = SIGBUS;
+					current->thread.code = BUS_ADRERR;
+					current->thread.faddr = addr;
+					send_fault_sig(&fp->ptregs);
+					return;
+				}
+			}
 		} else if (mmusr & (MMU_B|MMU_L|MMU_S)) {
 			pr_err("invalid %s access at %#lx from pc %#lx\n",
 			       str_read_write(ssw & RW), addr,
