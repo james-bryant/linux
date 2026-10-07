@@ -673,8 +673,9 @@ static void fp_roundint(struct fp_ext *dest, int mode)
 static struct fp_ext *modrem_kernel(struct fp_ext *dest, struct fp_ext *src,
 				    int mode)
 {
-	struct fp_ext tmp;
-	int sign;
+	unsigned long long rem, div;
+	unsigned int quot = 0;
+	int exp, last, sign, carry = 0;
 
 	fp_dyadic_check(dest, src);
 
@@ -683,22 +684,78 @@ static struct fp_ext *modrem_kernel(struct fp_ext *dest, struct fp_ext *src,
 		fp_set_nan(dest);
 		return dest;
 	}
-	if (IS_ZERO(dest) || IS_INF(src))
+	sign = dest->sign ^ src->sign;
+	if (IS_ZERO(dest) || IS_INF(src)) {
+		/* the quotient is zero */
+		fp_set_quotient(sign << 7);
 		return dest;
+	}
 
-	/* FIXME: there is almost certainly a smarter way to do this */
-	sign = dest->sign;
-	fp_copy_ext(&tmp, dest);
-	fp_fdiv(&tmp, src);		/* NOTE: src might be modified */
-	fp_roundint(&tmp, mode);
-	fp_fmul(&tmp, src);
-	fp_fsub(dest, &tmp);
-	/* a zero remainder has the sign of the dividend */
-	if (IS_ZERO(dest))
-		dest->sign = sign;
+	/* shift up the mantissa of denormalized numbers */
+	exp = dest->exp;
+	if ((long)dest->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(dest);
+	last = src->exp;
+	if ((long)src->mant.m32[0] >= 0)
+		last -= fp_overnormalize(src);
+	rem = dest->mant.m64;
+	div = src->mant.m64;
+
+	/*
+	 * Divide the mantissas as integers, bit by bit: one bit of the
+	 * quotient for every exponent from that of the dividend down to
+	 * that of the divisor.  The remainder is exact, and of the
+	 * quotient only the low bits are kept.  FREM divides one bit
+	 * further: the bit that is worth one half.
+	 */
+	if (mode == FPCR_ROUND_RN)
+		last--;
+	if (exp >= last) {
+		for (;;) {
+			quot <<= 1;
+			if (carry || rem >= div) {
+				rem -= div;
+				quot |= 1;
+			}
+			if (exp == last)
+				break;
+			exp--;
+			carry = rem >> 63;
+			rem <<= 1;
+			/*
+			 * the loop runs up to 32831 times for far-apart
+			 * operands; let other tasks run meanwhile
+			 */
+			if (!(exp & 0x3ff))
+				cond_resched();
+		}
+		if (mode == FPCR_ROUND_RN) {
+			/*
+			 * With that bit the next multiple of the divisor
+			 * is as near or nearer.  It is the one to take
+			 * unless it is as near and odd, and the remainder
+			 * is what is missing to it.
+			 */
+			carry = quot & 1;
+			quot >>= 1;
+			if (carry) {
+				if (rem || (quot & 1)) {
+					quot++;
+					dest->sign = !dest->sign;
+				}
+				rem = div - rem;
+			}
+		}
+	}
+
+	dest->mant.m64 = rem;
+	dest->exp = exp;
+	/* a remainder of denormalized numbers; no bit is lost */
+	if (exp < 0)
+		fp_denormalize(dest, -exp);
 
 	/* set the quotient byte */
-	fp_set_quotient((dest->mant.m64 & 0x7f) | (dest->sign << 7));
+	fp_set_quotient((quot & 0x7f) | (sign << 7));
 	return dest;
 }
 
