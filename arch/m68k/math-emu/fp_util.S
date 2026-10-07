@@ -191,9 +191,9 @@ fp_conv_double2ext:
 	rts
 	| zeros and denormalized
 fp_d2e_small:
-	| exponent is zero, so explizit bit is already zero too
-	tst.l	%d0
-	jeq	9b
+	| exponent is zero, so explizit bit is already zero too.
+	| The low lword has more of the mantissa, so this can still
+	| be a zero: its exponent is cleared when it is normalized.
 	move.w	#0x4000-0x3ff,%d1
 	jra	9b
 	| infinities and NAN
