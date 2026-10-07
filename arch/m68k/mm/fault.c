@@ -189,6 +189,7 @@ out_of_memory:
 
 no_context:
 	current->thread.signo = SIGBUS;
+	current->thread.code = BUS_ADRERR;
 	current->thread.faddr = address;
 	return send_fault_sig(regs);
 
