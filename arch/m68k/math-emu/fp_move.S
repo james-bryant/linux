@@ -181,11 +181,16 @@ fp_putdest:
 	move.l	%d1,%d2			| save size
 	fp_get_fp_reg
 	printf	PDECODE,"\n"
-	addq.l	#8,%a0
-	move.l	(%a0),-(%sp)
-	move.l	-(%a0),-(%sp)
-	move.l	-(%a0),-(%sp)
-	move.l	%sp,%a0
+	| Normalize a copy of the source register, not the register
+	| itself.  Keep the copy in the task struct's scratch temp, not
+	| on the kernel stack: a store to user space that faults unwinds
+	| through fp_err_ua1/fp_err_ua2, which only drop the emulator's
+	| return addresses, so a 12-byte operand left on the stack would
+	| make ret_from_exception use the wrong exception frame.
+	move.l	(%a0)+,(FPD_TEMPFP2,FPDATA)
+	move.l	(%a0)+,(FPD_TEMPFP2+4,FPDATA)
+	move.l	(%a0),(FPD_TEMPFP2+8,FPDATA)
+	lea	(FPD_TEMPFP2,FPDATA),%a0
 	jsr	fp_normalize_ext
 
 	swap	%d2
@@ -222,7 +227,6 @@ fp_format_extended:
 
 fp_format_packed:
 	/* not supported yet */
-	lea	(12,%sp),%sp
 	jra	fp_ill
 
 fp_format_word:
@@ -240,5 +244,4 @@ fp_format_byte:
 |	jra	fp_finish_move
 
 fp_finish_move:
-	lea	(12,%sp),%sp
 	jra	fp_final
