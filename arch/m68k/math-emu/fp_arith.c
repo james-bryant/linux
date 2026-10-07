@@ -390,10 +390,28 @@ struct fp_ext *fp_fsglmul(struct fp_ext *dest, struct fp_ext *src)
 
 	exp = dest->exp + src->exp - 0x3ffe;
 
+	/*
+	 * normalize the operands, so that a denormalized one keeps its
+	 * significant bits when it is truncated to single precision
+	 */
+	if ((long)dest->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(dest);
+	if ((long)src->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(src);
+
 	/* do a 32-bit multiply */
 	fp_mul64(dest->mant.m32[0], dest->mant.m32[1],
 		 dest->mant.m32[0] & 0xffffff00,
 		 src->mant.m32[0] & 0xffffff00);
+
+	/*
+	 * the product of two normalized numbers is in [1, 4): normalize it
+	 * to [2, 4) before the exponent is tested for overflow
+	 */
+	if ((long)dest->mant.m32[0] >= 0) {
+		exp--;
+		dest->mant.m64 <<= 1;
+	}
 
 	if (exp >= 0x7fff) {
 		fp_set_ovrflw(dest);
@@ -455,6 +473,16 @@ struct fp_ext *fp_fsgldiv(struct fp_ext *dest, struct fp_ext *src)
 	}
 
 	exp = dest->exp - src->exp + 0x3fff;
+
+	/*
+	 * normalize the operands first: a denormalized divisor whose top
+	 * 24 mantissa bits are zero would otherwise be truncated to zero
+	 * below, and fp_div64() would divide by zero and trap in the kernel
+	 */
+	if ((long)dest->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(dest);
+	if ((long)src->mant.m32[0] >= 0)
+		exp += fp_overnormalize(src);
 
 	dest->mant.m32[0] &= 0xffffff00;
 	src->mant.m32[0] &= 0xffffff00;
