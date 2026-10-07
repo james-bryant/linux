@@ -36,6 +36,7 @@
 
 #include <asm/traps.h>
 #include <asm/machdep.h>
+#include <asm/math-emu.h>
 #include <asm/setup.h>
 
 #include "process.h"
@@ -98,6 +99,23 @@ void flush_thread(void)
 	if (!FPU_IS_EMU) {
 		unsigned long zero = 0;
 		asm volatile("frestore %0": :"m" (zero));
+	} else {
+		/* the emulated FPU, as that null frame leaves a real one */
+		const struct fp_ext nan = {
+			.exp = 0x7fff,
+			.mant = { .m64 = ~0ULL }
+		};
+		struct fp_data *fpd = FPDATA;
+		int i;
+
+		for (i = 0; i < ARRAY_SIZE(fpd->fpreg); i++)
+			fpd->fpreg[i] = nan;
+		fpd->fpcr = 0;
+		fpd->fpsr = 0;
+		fpd->fpiar = 0;
+		/* the rounding precision and mode that fpcr selects */
+		fpd->prec = 0;
+		fpd->rnd = 0;
 	}
 #endif
 }
