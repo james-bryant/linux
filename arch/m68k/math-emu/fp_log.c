@@ -205,8 +205,14 @@ struct fp_ext *fp_fgetman(struct fp_ext *dest, struct fp_ext *src)
 	if (IS_ZERO(dest))
 		return dest;
 
-	if (IS_INF(dest))
+	if (IS_INF(dest)) {
+		fp_set_nan(dest);
 		return dest;
+	}
+
+	/* the mantissa of a denormalized number lacks its highest bits */
+	if ((long)dest->mant.m32[0] >= 0)
+		fp_overnormalize(dest);
 
 	dest->exp = 0x3FFF;
 
