@@ -52,8 +52,10 @@ struct fp_ext *fp_fneg(struct fp_ext *dest, struct fp_ext *src)
 
 /* Now, the slightly harder ones */
 
-/* fp_fadd: Implements the kernel of the FADD, FSADD, FDADD, FSUB,
-   FDSUB, and FCMP instructions. */
+/*
+ * fp_fadd: Implements the kernel of the FADD, FSADD, FDADD, FSUB and
+ * FDSUB instructions.
+ */
 
 struct fp_ext *fp_fadd(struct fp_ext *dest, struct fp_ext *src)
 {
@@ -123,13 +125,65 @@ struct fp_ext *fp_fsub(struct fp_ext *dest, struct fp_ext *src)
 }
 
 
+/*
+ * fp_fcmp: Implements the FCMP instruction, which sets the condition
+ * codes as for dest - src without computing the difference: equal
+ * infinities are equal, and their difference is not a number.
+ *
+ * The caller derives the condition codes from the value returned: a
+ * NaN operand without its sign, a zero for equal operands, which is
+ * negative only for a negative zero or infinity in dest, or else a
+ * number with the sign of the difference.  It is never an infinity.
+ */
+
 struct fp_ext *fp_fcmp(struct fp_ext *dest, struct fp_ext *src)
 {
+	struct fp_ext *res = &FPDATA->temp[1];
+	int cmp;
+
 	dprint(PINSTR, "fcmp ");
 
-	FPDATA->temp[1] = *dest;
-	src->sign = !src->sign;
-	return fp_fadd(&FPDATA->temp[1], src);
+	fp_copy_ext(res, dest);
+
+	/* unordered: FCMP does not give N the sign of a NaN */
+	if (!fp_normalize_ext(res)) {
+		res->sign = 0;
+		return res;
+	}
+	if (!fp_normalize_ext(src)) {
+		fp_copy_ext(res, src);
+		res->sign = 0;
+		return res;
+	}
+
+	/* +0 and -0 are equal */
+	if (IS_ZERO(src) && !IS_INF(src))
+		src->sign = res->sign;
+
+	/* both are normalized, and the mantissa of an infinity is ignored */
+	if (res->sign != src->sign)
+		cmp = 1;
+	else if (res->exp != src->exp)
+		cmp = res->exp > src->exp ? 1 : -1;
+	else if (IS_INF(res) || res->mant.m64 == src->mant.m64)
+		cmp = 0;
+	else
+		cmp = res->mant.m64 > src->mant.m64 ? 1 : -1;
+
+	if (cmp) {
+		if (cmp < 0)
+			res->sign = !res->sign;
+		res->exp = 0x3fff;
+		res->mant.m64 = 1ULL << 63;
+	} else {
+		if (!IS_INF(res) && !IS_ZERO(res))
+			res->sign = 0;
+		res->exp = 0;
+		res->mant.m64 = 0;
+	}
+	res->lowmant = 0;
+
+	return res;
 }
 
 struct fp_ext *fp_ftst(struct fp_ext *dest, struct fp_ext *src)
