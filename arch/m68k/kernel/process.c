@@ -238,8 +238,8 @@ int elf_core_copy_task_fpregs(struct task_struct *t, elf_fpregset_t *fpu)
 	if (FPU_IS_EMU) {
 		int i;
 
-		memcpy(fpu->fpcntl, current->thread.fpcntl, 12);
-		memcpy(fpu->fpregs, current->thread.fp, 96);
+		memcpy(fpu->fpcntl, t->thread.fpcntl, 12);
+		memcpy(fpu->fpregs, t->thread.fp, 96);
 		/* Convert internal fpu reg representation
 		 * into long double format
 		 */
