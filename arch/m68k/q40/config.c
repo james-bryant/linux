@@ -17,6 +17,7 @@
 #include <linux/linkage.h>
 #include <linux/init.h>
 #include <linux/major.h>
+#include <linux/serial_8250.h>
 #include <linux/serial_reg.h>
 #include <linux/rtc.h>
 #include <linux/bcd.h>
@@ -278,12 +279,76 @@ static const struct resource q40_pata_rsrc_1[] __initconst = {
 	DEFINE_RES_IRQ(15),
 };
 
+/* Standard COM flags (except for COM4, because of the 8514 problem) */
+#ifdef CONFIG_SERIAL_8250_DETECT_IRQ
+#define STD_COM_FLAGS (UPF_BOOT_AUTOCONF | UPF_SKIP_TEST | UPF_AUTO_IRQ)
+#define STD_COM4_FLAGS (UPF_BOOT_AUTOCONF | UPF_AUTO_IRQ)
+#else
+#define STD_COM_FLAGS (UPF_BOOT_AUTOCONF | UPF_SKIP_TEST)
+#define STD_COM4_FLAGS UPF_BOOT_AUTOCONF
+#endif
+
+#define Q40_UART(_base, _irq, _flags)		\
+	{					\
+		.iobase		= _base,	\
+		.irq		= _irq,		\
+		.uartclk	= 1843200,	\
+		.iotype		= UPIO_PORT,	\
+		.flags		= _flags,	\
+	}
+
+static const struct plat_serial8250_port q40_uart_data[] __initconst = {
+	Q40_UART(0x3f8, 4, STD_COM_FLAGS),	/* ttyS0 */
+	Q40_UART(0x2f8, 3, STD_COM_FLAGS),	/* ttyS1 */
+	Q40_UART(0x3e8, 4, STD_COM_FLAGS),	/* ttyS2 */
+	Q40_UART(0x2e8, 3, STD_COM4_FLAGS),	/* ttyS3 */
+	{ }
+};
+
+#if IS_BUILTIN(CONFIG_SERIAL_8250)
+/*
+ * A built-in 8250 driver takes the ports from here, as it used to take them
+ * from SERIAL_PORT_DFNS, and registers them itself.  Console initcalls run
+ * in link order, so this one runs before the driver's and a serial console
+ * starts as early as before.  A modular driver gets a platform device.
+ */
+static int __init q40_setup_serial(void)
+{
+	const struct plat_serial8250_port *p;
+	struct uart_port port;
+	int line = 0;
+
+	if (!MACH_IS_Q40)
+		return 0;
+
+	for (p = q40_uart_data; p->flags; p++) {
+		memset(&port, 0, sizeof(port));
+		port.line = line++;
+		port.iobase = p->iobase;
+		port.irq = p->irq;
+		port.uartclk = p->uartclk;
+		port.iotype = p->iotype;
+		port.flags = p->flags;
+		early_serial_setup(&port);
+	}
+
+	return 0;
+}
+console_initcall(q40_setup_serial);
+#endif
+
 static __init int q40_platform_init(void)
 {
 	if (!MACH_IS_Q40)
 		return -ENODEV;
 
 	platform_device_register_simple("q40kbd", -1, NULL, 0);
+
+	if (IS_MODULE(CONFIG_SERIAL_8250))
+		platform_device_register_data(NULL, "serial8250",
+					      PLAT8250_DEV_PLATFORM,
+					      q40_uart_data,
+					      sizeof(q40_uart_data));
 
 	platform_device_register_simple("atari-falcon-ide", 0, q40_pata_rsrc_0,
 					ARRAY_SIZE(q40_pata_rsrc_0));
