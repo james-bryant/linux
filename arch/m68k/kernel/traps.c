@@ -544,7 +544,7 @@ static inline void bus_error030 (struct frame *fp)
 		if (!(ssw & RW) || (ssw & RM))
 			errorcode |= 2;
 
-		if (mmusr & (MMU_I | MMU_WP)) {
+		if ((mmusr & MMU_I) || ((mmusr & MMU_WP) && (errorcode & 2))) {
 			/* We might have an exception table for this PC */
 			if (ssw & 4 && !search_exception_tables(fp->ptregs.pc)) {
 				pr_err("Data %s fault at %#010lx in %s (pc=%#lx)\n",
