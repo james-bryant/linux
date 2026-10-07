@@ -157,7 +157,7 @@ struct fp_ext *fp_fcmp(struct fp_ext *dest, struct fp_ext *src)
 	}
 
 	/* +0 and -0 are equal */
-	if (IS_ZERO(src) && !IS_INF(src))
+	if (IS_ZERO(src))
 		src->sign = res->sign;
 
 	/* both are normalized, and the mantissa of an infinity is ignored */

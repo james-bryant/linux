@@ -46,7 +46,12 @@
 #ifndef __ASSEMBLER__
 
 #define IS_INF(a) ((a)->exp == 0x7fff)
-#define IS_ZERO(a) ((a)->mant.m64 == 0)
+/* the mantissa of an infinity is zero as well */
+#define IS_ZERO(a) ({						\
+	const struct fp_ext *__a = (a);				\
+								\
+	!IS_INF(__a) && __a->mant.m64 == 0;			\
+})
 
 
 #define fp_set_sr(bit) ({					\
