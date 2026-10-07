@@ -106,6 +106,9 @@ struct fp_ext *fp_fadd(struct fp_ext *dest, struct fp_ext *src)
 			dest->sign = !dest->sign;
 		} else
 			fp_submant(dest, dest, src);
+		/* numbers that cancel: the zero of the rounding mode */
+		if (!dest->mant.m64 && !dest->lowmant)
+			dest->sign = FPDATA->rnd == FPCR_ROUND_RM;
 	}
 
 	return dest;
@@ -655,6 +658,7 @@ static struct fp_ext *modrem_kernel(struct fp_ext *dest, struct fp_ext *src,
 				    int mode)
 {
 	struct fp_ext tmp;
+	int sign;
 
 	fp_dyadic_check(dest, src);
 
@@ -667,11 +671,15 @@ static struct fp_ext *modrem_kernel(struct fp_ext *dest, struct fp_ext *src,
 		return dest;
 
 	/* FIXME: there is almost certainly a smarter way to do this */
+	sign = dest->sign;
 	fp_copy_ext(&tmp, dest);
 	fp_fdiv(&tmp, src);		/* NOTE: src might be modified */
 	fp_roundint(&tmp, mode);
 	fp_fmul(&tmp, src);
 	fp_fsub(dest, &tmp);
+	/* a zero remainder has the sign of the dividend */
+	if (IS_ZERO(dest))
+		dest->sign = sign;
 
 	/* set the quotient byte */
 	fp_set_quotient((dest->mant.m64 & 0x7f) | (dest->sign << 7));
