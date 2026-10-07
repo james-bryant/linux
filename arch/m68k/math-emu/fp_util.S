@@ -338,7 +338,7 @@ fp_e2e_small2:
 	ext.l	%d1
 	jeq	fp_e2e_checkround
 	clr.l	(4,%a0)
-	sub.w	#32,%d2
+	sub.w	#32,%d1
 	jcs	1f
 	lsl.l	%d1,%d0			| lower lword needs only to be shifted
 	move.l	%d0,(%a0)		| into the higher lword
