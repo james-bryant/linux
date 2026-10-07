@@ -336,7 +336,7 @@ struct fp_ext *fp_fdiv(struct fp_ext *dest, struct fp_ext *src)
 	if ((long)dest->mant.m32[0] >= 0)
 		exp -= fp_overnormalize(dest);
 	if ((long)src->mant.m32[0] >= 0)
-		exp -= fp_overnormalize(src);
+		exp += fp_overnormalize(src);
 
 	/* now, do the 64-bit divide */
 	fp_dividemant(&temp, dest, src);
