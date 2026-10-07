@@ -214,10 +214,13 @@ struct fp_ext *fp_fmul(struct fp_ext *dest, struct fp_ext *src)
 		return dest;
 	}
 	if (IS_INF(src)) {
-		if (IS_ZERO(dest))
+		if (IS_ZERO(dest)) {
 			fp_set_nan(dest);
-		else
+		} else {
+			/* the infinity gets the sign of the product */
+			src->sign = dest->sign;
 			fp_copy_ext(dest, src);
+		}
 		return dest;
 	}
 
@@ -370,10 +373,13 @@ struct fp_ext *fp_fsglmul(struct fp_ext *dest, struct fp_ext *src)
 		return dest;
 	}
 	if (IS_INF(src)) {
-		if (IS_ZERO(dest))
+		if (IS_ZERO(dest)) {
 			fp_set_nan(dest);
-		else
+		} else {
+			/* the infinity gets the sign of the product */
+			src->sign = dest->sign;
 			fp_copy_ext(dest, src);
+		}
 		return dest;
 	}
 
