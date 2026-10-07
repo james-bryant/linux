@@ -1153,7 +1153,7 @@ fp_nsf_huge:
 	neg.w	%d2
 	add.w	#32,%d2
 	lsr.l	%d2,%d0
-9:	tst.w	(-4,%a0)
+9:	tst.b	(-3,%a0)
 	jne	1f
 	tst.\s	%d0
 	jmi	fp_e2i_large\b
@@ -1189,10 +1189,10 @@ fp_e2i_doroundup\b:
 2:	subq.w	#2,%d2
 	jcs	9b			| %d2 < 2, round to zero
 	jhi	3f			| %d2 > 2, round to +infinity
-	tst.w	(-4,%a0)		| to -inf
+	tst.b	(-3,%a0)		| to -inf
 	jne	fp_e2i_doroundup\b	| negative, round to infinity
 	jra	9b			| positive, round to zero
-3:	tst.w	(-4,%a0)		| to +inf
+3:	tst.b	(-3,%a0)		| to +inf
 	jeq	fp_e2i_doroundup\b	| positive, round to infinity
 	jra	9b	| negative, round to zero
 	| we are only want -2**127 get correctly rounded here,
@@ -1222,11 +1222,11 @@ fp_e2i_small\b:
 	subq.w	#2,%d2
 	jcs	3f			| %d2 < 2, round to nearest/zero
 	jhi	2f			| %d2 > 2, round to +infinity
-	tst.w	(-4,%a0)		| to -inf
+	tst.b	(-3,%a0)		| to -inf
 	jeq	3f
 	subq.\s	#1,%d0
 	jra	3f
-2:	tst.w	(-4,%a0)		| to +inf
+2:	tst.b	(-3,%a0)		| to +inf
 	jne	3f
 	addq.\s	#1,%d0
 3:	printf	PCONV,"-> %p\n",1,%d0
@@ -1234,7 +1234,7 @@ fp_e2i_small\b:
 fp_e2i_large\b:
 	fp_set_sr FPSR_EXC_OPERR
 	move.\s	#inf,%d0
-	tst.w	(-4,%a0)
+	tst.b	(-3,%a0)
 	jeq	1f
 	addq.\s	#1,%d0
 1:	printf	PCONV,"-> %p\n",1,%d0
