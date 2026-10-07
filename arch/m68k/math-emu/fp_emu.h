@@ -147,7 +147,7 @@ extern const struct fp_ext fp_Inf;
 	register int __res asm ("d0");				\
 								\
 	asm volatile ("jsr fp_conv_ext2long"			\
-			: "=d" (__res) : "a" (__src)		\
+			: "=d" (__res), "+a" (__src) :		\
 			: "a1", "d1", "d2", "memory");		\
 	__res;							\
 })
@@ -156,8 +156,8 @@ extern const struct fp_ext fp_Inf;
 	register struct fp_ext *__dest asm ("a0") = dest;	\
 	register int __src asm ("d0") = src;			\
 								\
-	asm volatile ("jsr fp_conv_ext2long"			\
-			: : "d" (__src), "a" (__dest)		\
+	asm volatile ("jsr fp_conv_long2ext"			\
+			: "+d" (__src) : "a" (__dest)		\
 			: "a1", "d1", "d2", "memory");		\
 })
 

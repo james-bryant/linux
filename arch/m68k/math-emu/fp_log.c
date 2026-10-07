@@ -18,6 +18,7 @@
 #include "fp_arith.h"
 #include "fp_emu.h"
 #include "fp_log.h"
+#include "multi_arith.h"
 
 static const struct fp_ext fp_one = {
 	.exp = 0x3fff,
@@ -170,6 +171,8 @@ struct fp_ext *fp_flog2(struct fp_ext *dest, struct fp_ext *src)
 
 struct fp_ext *fp_fgetexp(struct fp_ext *dest, struct fp_ext *src)
 {
+	int exp;
+
 	dprint(PINSTR, "fgetexp\n");
 
 	fp_monadic_check(dest, src);
@@ -181,7 +184,12 @@ struct fp_ext *fp_fgetexp(struct fp_ext *dest, struct fp_ext *src)
 	if (IS_ZERO(dest))
 		return dest;
 
-	fp_conv_long2ext(dest, (int)dest->exp - 0x3FFF);
+	/* the exponent that a denormalized number has when normalized */
+	exp = dest->exp;
+	if ((long)dest->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(dest);
+
+	fp_conv_long2ext(dest, exp - 0x3FFF);
 
 	fp_normalize_ext(dest);
 
