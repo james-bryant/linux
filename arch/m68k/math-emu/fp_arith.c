@@ -123,6 +123,9 @@ struct fp_ext *fp_fsub(struct fp_ext *dest, struct fp_ext *src)
 {
 	dprint(PINSTR, "fsub ");
 
+	/* a NaN is returned as it is, also one in the source */
+	fp_dyadic_check(dest, src);
+
 	src->sign = !src->sign;
 	return fp_fadd(dest, src);
 }
