@@ -22,6 +22,12 @@
 
 static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
 {
+	/*
+	 * bits already shifted out, e.g. by a multiply, are below the new
+	 * ones and must survive as the sticky bit for the rounding
+	 */
+	unsigned char sticky = reg->lowmant ? 1 : 0;
+
 	reg->exp += cnt;
 
 	switch (cnt) {
@@ -60,6 +66,7 @@ static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
 		reg->mant.m32[1] = 0;
 		break;
 	}
+	reg->lowmant |= sticky;
 }
 
 static inline int fp_overnormalize(struct fp_ext *reg)
