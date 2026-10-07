@@ -1177,4 +1177,29 @@ asmlinkage void fpemu_signal(int signal, int code, void *addr)
 {
 	force_sig_fault(signal, code, addr);
 }
+
+/*
+ * Send the signal for a user-space access that faulted while the FPU
+ * emulator was reading or writing an operand at addr.  On the 68020 and
+ * 68030, do_page_fault() or bus_error030() has recorded the signal, code
+ * and address of every such fault in current->thread before returning to
+ * the emulator's fixup; send those, so that a write to a read-only page
+ * is SEGV_ACCERR and a bus error SIGBUS, as for an access outside the
+ * emulator.  The 68040 and 68060 handlers do not record all three for
+ * every fault (access_error040() leaves the code alone for a bus error,
+ * access_error060() records nothing for one), so there, or should no
+ * signal be recorded, send what the emulator always sent: SIGSEGV with
+ * SEGV_MAPERR at the address it was accessing.
+ */
+asmlinkage void fpemu_signal_fault(void *addr)
+{
+	int signo = SIGSEGV, code = SEGV_MAPERR;
+
+	if (CPU_IS_020_OR_030 && current->thread.signo) {
+		signo = current->thread.signo;
+		code = current->thread.code;
+		addr = (void *)current->thread.faddr;
+	}
+	force_sig_fault(signo, code, (void __user *)addr);
+}
 #endif

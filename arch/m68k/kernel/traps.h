@@ -6,5 +6,6 @@ struct frame;
 
 asmlinkage void buserr_c(struct frame *fp);
 asmlinkage void fpemu_signal(int signal, int code, void *addr);
+asmlinkage void fpemu_signal_fault(void *addr);
 asmlinkage void fpsp040_die(void);
 asmlinkage void set_esp0(unsigned long ssp);

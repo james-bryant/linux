@@ -78,17 +78,15 @@ fpu_emu:
 	jra	ret_from_exception
 
 	| we jump here after an access error while trying to access
-	| user space, we correct stackpointer and send a SIGSEGV to
-	| the user process
+	| user space at %a0, we correct stackpointer and send the signal
+	| for this access to the user process
 fp_err_ua2:
 	addq.l	#4,%sp
 fp_err_ua1:
 	addq.l	#4,%sp
 	move.l	%a0,-(%sp)
-	pea	LSEGV_MAPERR
-	pea	LSIGSEGV
-	jsr	fpemu_signal
-	add.w	#12,%sp
+	jsr	fpemu_signal_fault
+	addq.l	#4,%sp
 	jra	ret_from_exception
 
 	| we jump here for an instruction that is not for the fpu, we
