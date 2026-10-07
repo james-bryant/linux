@@ -751,6 +751,7 @@ struct fp_ext *fp_fintrz(struct fp_ext *dest, struct fp_ext *src)
 struct fp_ext *fp_fscale(struct fp_ext *dest, struct fp_ext *src)
 {
 	int scale, oldround;
+	unsigned int oldsr;
 
 	dprint(PINSTR, "fscale\n");
 
@@ -771,28 +772,34 @@ struct fp_ext *fp_fscale(struct fp_ext *dest, struct fp_ext *src)
 	if (IS_ZERO(src) || IS_ZERO(dest))
 		return dest;
 
-	/* Source exponent out of range */
-	if (src->exp >= 0x400c) {
-		fp_set_ovrflw(dest);
-		return dest;
+	if (src->exp >= 0x400d) {
+		/* 2^14 or more: always an overflow or an underflow */
+		scale = src->sign ? -0x10000 : 0x10000;
+	} else {
+		/*
+		 * src must be rounded with round to zero,
+		 * and that is not inexact.
+		 */
+		oldround = FPDATA->rnd;
+		oldsr = FPDATA->fpsr;
+		FPDATA->rnd = FPCR_ROUND_RZ;
+		scale = fp_conv_ext2long(src);
+		FPDATA->rnd = oldround;
+		FPDATA->fpsr = oldsr;
 	}
-
-	/* src must be rounded with round to zero. */
-	oldround = FPDATA->rnd;
-	FPDATA->rnd = FPCR_ROUND_RZ;
-	scale = fp_conv_ext2long(src);
-	FPDATA->rnd = oldround;
 
 	/* new exponent */
 	scale += dest->exp;
 
 	if (scale >= 0x7fff) {
 		fp_set_ovrflw(dest);
-	} else if (scale <= 0) {
+		return dest;
+	}
+	dest->exp = scale;
+	if (scale < 0) {
 		fp_set_sr(FPSR_EXC_UNFL);
 		fp_denormalize(dest, -scale);
-	} else
-		dest->exp = scale;
+	}
 
 	return dest;
 }
