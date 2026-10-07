@@ -320,7 +320,7 @@ fp_getdest:
 	.long	fp_ill, fp_ill, fp_ill, fp_ill
 	.long	fp_fsincos0, fp_fsincos1, fp_fsincos2, fp_fsincos3
 	.long	fp_fsincos4, fp_fsincos5, fp_fsincos6, fp_fsincos7
-	.long	fp_fcmp, fp_ill, fp_ftst, fp_ill
+	.long	fp_fcmp, fp_ill, fpa_ftst, fp_ill
 	.long	fp_ill, fp_ill, fp_ill, fp_ill
 	.long	fp_fsmove, fp_fssqrt, fp_ill, fp_ill
 	.long	fp_fdmove, fp_fdsqrt, fp_ill, fp_ill
@@ -402,6 +402,10 @@ fpa_fsglmul:
 fpa_fsgldiv:
 	move.l	#fp_finalrounding_single_fast,(%sp)
 	jra	fp_fsgldiv
+
+fpa_ftst:
+	move.l	#fp_finalnorounding,(%sp)
+	jra	fp_ftst
 
 .macro	fp_dosingleprec instr
 	printf	PINSTR,"single "

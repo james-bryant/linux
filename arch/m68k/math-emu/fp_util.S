@@ -78,7 +78,7 @@ fp_end:
 	.globl	fp_conv_ext2long, fp_conv_ext2short
 	.globl	fp_conv_ext2byte
 	.globl	fp_finalrounding_single, fp_finalrounding_single_fast
-	.globl	fp_finalrounding_double
+	.globl	fp_finalrounding_double, fp_finalnorounding
 	.globl	fp_finalrounding, fp_finaltest, fp_final
 
 /*
@@ -1350,6 +1350,16 @@ fp_finalrounding_double:
 	addq.l	#8,%sp
 	jsr	fp_normalize_ext
 	jsr	fp_normalize_double
+	jra	fp_finaltest
+
+	| ftst tests its operand as it is: it is not rounded to
+	| the rounding precision, and a denormalized number is
+	| no underflow
+
+fp_finalnorounding:
+	addq.l	#8,%sp
+	jsr	fp_normalize_ext
+	fp_clr_sr FPSR_EXC_UNFL
 	jra	fp_finaltest
 
 	| fp_finaltest:
