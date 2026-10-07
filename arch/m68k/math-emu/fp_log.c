@@ -15,18 +15,14 @@
 
 */
 
-#include "fp_arith.h"
 #include "fp_emu.h"
 #include "fp_log.h"
 #include "multi_arith.h"
 
-static const struct fp_ext fp_one = {
-	.exp = 0x3fff,
-};
-
 struct fp_ext *fp_fsqrt(struct fp_ext *dest, struct fp_ext *src)
 {
-	struct fp_ext tmp, src2;
+	union fp_mant64 x, root, rem, trial;
+	unsigned long low, remh, trialh;
 	int i, exp;
 
 	dprint(PINSTR, "fsqrt\n");
@@ -43,56 +39,72 @@ struct fp_ext *fp_fsqrt(struct fp_ext *dest, struct fp_ext *src)
 	if (IS_INF(dest))
 		return dest;
 
-	/*
-	 *		 sqrt(m) * 2^(p)	, if e = 2*p
-	 * sqrt(m*2^e) =
-	 *		 sqrt(2*m) * 2^(p)	, if e = 2*p + 1
-	 *
-	 * So we use the last bit of the exponent to decide whether to
-	 * use the m or 2*m.
-	 *
-	 * Since only the fractional part of the mantissa is stored and
-	 * the integer part is assumed to be one, we place a 1 or 2 into
-	 * the fixed point representation.
-	 */
+	/* shift up the mantissa of a denormalized number */
 	exp = dest->exp;
-	dest->exp = 0x3FFF;
-	if (!(exp & 1))		/* lowest bit of exponent is set */
-		dest->exp++;
-	fp_copy_ext(&src2, dest);
+	if ((long)dest->mant.m32[0] >= 0)
+		exp -= fp_overnormalize(dest);
 
 	/*
-	 * The taylor row around a for sqrt(x) is:
-	 *	sqrt(x) = sqrt(a) + 1/(2*sqrt(a))*(x-a) + R
-	 * With a=1 this gives:
-	 *	sqrt(x) = 1 + 1/2*(x-1)
-	 *		= 1/2*(1+x)
-	 */
-	/* It is safe to cast away the constness, as fp_one is normalized */
-	fp_fadd(dest, (struct fp_ext *)&fp_one);
-	dest->exp--;		/* * 1/2 */
-
-	/*
-	 * We now apply the newton rule to the function
-	 *	f(x) := x^2 - r
-	 * which has a null point on x = sqrt(r).
+	 * The mantissa m is an integer of 64 bits with the highest bit
+	 * set, and the number is m * 2^(exp - 0x3fff - 63).  Let x be
+	 * m * 2^63 for an odd exp and m * 2^64 for an even one.  Then
+	 * 2^126 <= x < 2^128, and the square root of the number is
 	 *
-	 * It gives:
-	 *	x' := x - f(x)/f'(x)
-	 *	    = x - (x^2 -r)/(2*x)
-	 *	    = x - (x - r/x)/2
-	 *          = (2*x - x + r/x)/2
-	 *	    = (x + r/x)/2
+	 *	sqrt(x) * 2^((exp + 0x3fff) / 2 - 0x3fff - 63)
+	 *
+	 * with a division that rounds down.  The integer part of sqrt(x)
+	 * has 64 bits with the highest bit set: the mantissa of the result.
 	 */
-	for (i = 0; i < 9; i++) {
-		fp_copy_ext(&tmp, &src2);
-
-		fp_fdiv(&tmp, dest);
-		fp_fadd(dest, &tmp);
-		dest->exp--;
+	x = dest->mant;
+	low = 0;
+	if (exp & 1) {
+		low = (x.m32[1] & 1) << 1;
+		x.m64 >>= 1;
 	}
 
-	dest->exp += (exp - 0x3FFF) / 2;
+	/*
+	 * The root bit by bit, as in long division: each step shifts the
+	 * next two bits of x, from x itself and then from low, into the
+	 * remainder and subtracts 4 * root + 1 from it if it can.  The
+	 * remainder is at most twice the root, so that it has up to 66
+	 * bits with these two.
+	 */
+	root.m64 = 0;
+	rem.m64 = 0;
+	for (i = 0; i < 64; i++) {
+		/*
+		 * the two bits that the left shift takes off the top of the
+		 * remainder, which stays below twice the root and so needs
+		 * no more than these
+		 */
+		remh = rem.m32[0] >> 30;
+		rem.m64 = rem.m64 << 2 | x.m32[0] >> 30;
+		x.m64 = x.m64 << 2 | low;
+		low = 0;
+
+		trialh = root.m32[0] >> 30;
+		trial.m64 = root.m64 << 2 | 1;
+		root.m64 <<= 1;
+		if (remh > trialh || (remh == trialh && rem.m64 >= trial.m64)) {
+			remh -= trialh + (rem.m64 < trial.m64);
+			rem.m64 -= trial.m64;
+			root.m32[1] |= 1;
+		}
+	}
+
+	dest->exp = (exp + 0x3fff) / 2;
+	dest->mant = root;
+
+	/*
+	 * The low mantissa byte tells the rounding what follows these 64
+	 * bits: nothing if there is no remainder, and more than half a
+	 * unit if the remainder is more than the root.  It is never just
+	 * a half.
+	 */
+	if (remh || rem.m64 > root.m64)
+		dest->lowmant = 0x81;
+	else
+		dest->lowmant = rem.m64 != 0;
 
 	return dest;
 }
