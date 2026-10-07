@@ -50,6 +50,7 @@
 #include <asm/traps.h>
 #include <asm/ucontext.h>
 #include <asm/cacheflush.h>
+#include <asm/math-emu.h>
 
 #include "signal.h"
 
@@ -262,6 +263,8 @@ static inline int restore_fpu_state(struct sigcontext *sc)
 	    /* restore registers */
 	    memcpy(current->thread.fpcntl, sc->sc_fpcntl, 12);
 	    memcpy(current->thread.fp, sc->sc_fpregs, 24);
+	    /* the rounding precision and mode that the restored FPCR selects */
+	    fp_emu_refresh_fpcr((struct fp_data *)current->thread.fp);
 	    return 0;
 	}
 
@@ -342,6 +345,11 @@ static inline int rt_restore_fpu_state(struct ucontext __user *uc)
 		if (__copy_from_user(current->thread.fpcntl,
 				uc->uc_mcontext.fpregs.f_fpcntl, 12))
 			goto out;
+		/*
+		 * Refresh the rounding cache from the restored FPCR now, so a
+		 * fault on the register copy below still leaves it consistent.
+		 */
+		fp_emu_refresh_fpcr((struct fp_data *)current->thread.fp);
 		/* restore all other fpu register */
 		if (__copy_from_user(current->thread.fp,
 				uc->uc_mcontext.fpregs.f_fpregs, 96))

@@ -25,6 +25,7 @@
 #include <linux/uaccess.h>
 #include <asm/page.h>
 #include <asm/processor.h>
+#include <asm/math-emu.h>
 
 #include "ptrace.h"
 
@@ -220,6 +221,13 @@ long arch_ptrace(struct task_struct *child, long request,
 				       ((data & 0x0000ffff) >> 1);
 			}
 			child->thread.fp[regno - 21] = data;
+			/*
+			 * FPCR (regno 45) selects the emulator's cached
+			 * rounding precision and mode; refresh them, and
+			 * mask FPCR or FPSR (regno 46) as a move to it does.
+			 */
+			if (FPU_IS_EMU && (regno == 45 || regno == 46))
+				fp_emu_refresh_fpcr((struct fp_data *)child->thread.fp);
 		} else
 			goto out_eio;
 		break;
@@ -258,6 +266,12 @@ long arch_ptrace(struct task_struct *child, long request,
 		if (copy_from_user(&child->thread.fp, datap,
 				   sizeof(struct user_m68kfp_struct)))
 			ret = -EFAULT;
+		/*
+		 * FPCR may have been written, wholly or in part before a
+		 * fault, so refresh the cache whatever copy_from_user returned.
+		 */
+		if (FPU_IS_EMU)
+			fp_emu_refresh_fpcr((struct fp_data *)child->thread.fp);
 		break;
 
 	case PTRACE_GET_THREAD_AREA:

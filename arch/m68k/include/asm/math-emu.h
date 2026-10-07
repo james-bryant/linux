@@ -103,6 +103,23 @@ struct fp_data {
 	struct fp_ext temp[2];
 };
 
+/*
+ * The emulator caches the rounding precision and mode that a move to FPCR
+ * selected (fpc_movem_fin in fp_movem.S) and rounds by the cached copy.  A
+ * writer that sets the emulated control registers another way (sigreturn,
+ * ptrace) has to refresh the cache, or the next operation rounds the old
+ * way while FPCR reads back the new value.  Apply the same masks a move to
+ * FPCR/FPSR applies, so bits those registers do not keep do not survive a
+ * signal frame or a ptrace write either.
+ */
+static inline void fp_emu_refresh_fpcr(struct fp_data *fpd)
+{
+	fpd->fpcr &= 0x0000fff0;
+	fpd->fpsr &= 0x0ffffff8;
+	fpd->rnd = (fpd->fpcr >> 4) & 3;
+	fpd->prec = (fpd->fpcr >> 6) & 3;
+}
+
 #ifdef FPU_EMU_DEBUG
 extern unsigned int fp_debugprint;
 
