@@ -86,9 +86,24 @@
 		return dest;					\
 })
 
+/*
+ * Set SNAN for a signaling NaN: one without bit 62 of the mantissa.
+ * The NaN that an instruction returns is tested when its result is
+ * normalized; this is for a NaN operand that is not returned.
+ */
+#define fp_check_snan(reg) ({					\
+	const struct fp_ext *__reg = (reg);			\
+								\
+	if (IS_INF(__reg) && (__reg->mant.m64 << 1) &&		\
+	    !(__reg->mant.m32[0] & 0x40000000))			\
+		fp_set_sr(FPSR_EXC_SNAN);			\
+})
+
 #define fp_dyadic_check(dest, src) ({				\
-	if (!fp_normalize_ext(dest))				\
+	if (!fp_normalize_ext(dest)) {				\
+		fp_check_snan(src);				\
 		return dest;					\
+	}							\
 	if (!fp_normalize_ext(src)) {				\
 		fp_copy_ext(dest, src);				\
 		return dest;					\

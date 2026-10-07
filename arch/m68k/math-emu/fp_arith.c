@@ -153,6 +153,7 @@ struct fp_ext *fp_fcmp(struct fp_ext *dest, struct fp_ext *src)
 
 	/* unordered: FCMP does not give N the sign of a NaN */
 	if (!fp_normalize_ext(res)) {
+		fp_check_snan(src);
 		res->sign = 0;
 		return res;
 	}
