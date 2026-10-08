@@ -44,6 +44,7 @@ enum fpt_insn {
 
 /* fp_tables.c: value and correction of each entry */
 extern const struct fp_ext fpt_exptbl[64][2];
+extern const struct fp_ext fpt_pitbl[65][2];
 
 /*
  * What fpt_enter() takes from the program, until the last operation of

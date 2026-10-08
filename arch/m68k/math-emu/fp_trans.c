@@ -187,6 +187,19 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_INF },
 		[FPT_N(FPT_INF)]	= { FPT_R_ZERO },
 	},
+	/*
+	 * The sine of a denormalized number is that number as far as the
+	 * precision shows, and the package (t_extdnrm) reports it as an
+	 * underflow.
+	 */
+	[FPT_FSIN] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 };
 
 /*

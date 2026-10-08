@@ -15,16 +15,342 @@
 
 */
 
+/*
+ * This file contains a modified version of parts of Motorola's
+ * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
+ * with the functions and the constants above them that they use, are the
+ * package's algorithms written in C, and the constants are the package's
+ * in another form.  The package comes with this notice
+ * (arch/m68k/fpsp040/README):
+ *
+ *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
+ *	M68000 Hi-Performance Microprocessor Division
+ *	M68040 Software Package
+ *
+ *	M68040 Software Package Copyright (c) 1993, 1994 Motorola Inc.
+ *	All rights reserved.
+ *
+ *	THE SOFTWARE is provided on an "AS IS" basis and without warranty.
+ *	To the maximum extent permitted by applicable law,
+ *	MOTOROLA DISCLAIMS ALL WARRANTIES WHETHER EXPRESS OR IMPLIED,
+ *	INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A
+ *	PARTICULAR PURPOSE and any warranty against infringement with
+ *	regard to the SOFTWARE (INCLUDING ANY MODIFIED VERSIONS THEREOF)
+ *	and any accompanying written materials.
+ *
+ *	To the maximum extent permitted by applicable law,
+ *	IN NO EVENT SHALL MOTOROLA BE LIABLE FOR ANY DAMAGES WHATSOEVER
+ *	(INCLUDING WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS
+ *	PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION, OR
+ *	OTHER PECUNIARY LOSS) ARISING OF THE USE OR INABILITY TO USE THE
+ *	SOFTWARE.  Motorola assumes no responsibility for the maintenance
+ *	and support of the SOFTWARE.
+ *
+ *	You are hereby granted a copyright license to use, modify, and
+ *	distribute the SOFTWARE so long as this entire notice is retained
+ *	without alteration in any modified and/or redistributed versions,
+ *	and that such modified versions are clearly identified as such.
+ *	No licenses are granted by implication, estoppel or otherwise
+ *	under any patents or trademarks of Motorola, Inc.
+ *
+ * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(),
+ * fp_fcosh(), fp_ftanh(), fp_fatanh() and fp_fsincos0() to fp_fsincos7()
+ * are not taken from the package.
+ */
+
 #include "fp_emu.h"
+#include "fp_trans.h"
 #include "fp_trig.h"
+
+/*
+ * The trigonometric instructions follow ssin and stan of Motorola's
+ * floating-point package for the 68040 (arch/m68k/fpsp040/ssin.S and
+ * stan.S; its notice is at the head of this file) step by step, so that
+ * they compute the same digits.  The package states an error below one
+ * unit in the last place for the sine of an argument below 15 pi.  It
+ * does not keep that bound, even against the sine of the argument as
+ * its own pi/2 reduces it: results almost two units off were found.
+ *
+ * Pi/2 has 66 bits in the package.  The sine of an argument next to a
+ * multiple of pi and that of a large argument are those of the argument
+ * as these 66 bits reduce it, and no more accurate than that.
+ *
+ * The constants are the package's.  It has most of them in single or
+ * double precision, and they are the same numbers here:
+ *
+ *	2/pi	0x3fe45f30 0x6dc9c883
+ *	A3	0xbf2a01a0 0x1a018b59	B1	0xbf000000
+ *	A4	0x3ec71de3 0xa5341531	B4	0x3efa01a0 0x1a01d423
+ *	A5	0xbe5ae645 0x2a118ae4	B5	0xbe927e4f 0xb79d9fcf
+ *	A6	0x3de61209 0x7aae8da1	B6	0x3e21eed9 0x0612c972
+ *	A7	0xbd6aaa77 0xccc994f5	B7	0xbda9396f 0x9f45ac19
+ *					B8	0x3d2ac4d0 0xd6011ee3
+ */
+static const struct fp_ext fp_trig_twobypi =
+	FPT_EXT(0, 0x3ffe, 0xa2f9836e, 0x4e441800);
+
+static const struct fp_ext fp_sin_a1 =
+	FPT_EXT(1, 0x3ffc, 0xaaaaaaaa, 0xaaaaaa99);
+static const struct fp_ext fp_sin_a2 =
+	FPT_EXT(0, 0x3ff8, 0x88888888, 0x888859af);
+static const struct fp_ext fp_sin_a3 =
+	FPT_EXT(1, 0x3ff2, 0xd00d00d0, 0x0c5ac800);
+static const struct fp_ext fp_sin_a4 =
+	FPT_EXT(0, 0x3fec, 0xb8ef1d29, 0xa0a98800);
+static const struct fp_ext fp_sin_a5 =
+	FPT_EXT(1, 0x3fe5, 0xd7322950, 0x8c572000);
+static const struct fp_ext fp_sin_a6 =
+	FPT_EXT(0, 0x3fde, 0xb0904bd5, 0x746d0800);
+static const struct fp_ext fp_sin_a7 =
+	FPT_EXT(1, 0x3fd6, 0xd553be66, 0x4ca7a800);
+
+static const struct fp_ext fp_cos_b1 =
+	FPT_EXT(1, 0x3ffe, 0x80000000, 0x00000000);
+static const struct fp_ext fp_cos_b2 =
+	FPT_EXT(0, 0x3ffa, 0xaaaaaaaa, 0xaaaaab5e);
+static const struct fp_ext fp_cos_b3 =
+	FPT_EXT(1, 0x3ff5, 0xb60b60b6, 0x0b61d438);
+static const struct fp_ext fp_cos_b4 =
+	FPT_EXT(0, 0x3fef, 0xd00d00d0, 0x0ea11800);
+static const struct fp_ext fp_cos_b5 =
+	FPT_EXT(1, 0x3fe9, 0x93f27dbc, 0xecfe7800);
+static const struct fp_ext fp_cos_b6 =
+	FPT_EXT(0, 0x3fe2, 0x8f76c830, 0x964b9000);
+static const struct fp_ext fp_cos_b7 =
+	FPT_EXT(1, 0x3fda, 0xc9cb7cfa, 0x2d60c800);
+static const struct fp_ext fp_cos_b8 =
+	FPT_EXT(0, 0x3fd2, 0xd62686b0, 0x08f71800);
+
+/*
+ * 2^-40 in the form of fpt_compact().  Below it ssin, stan, satan and
+ * stanh of the package return their argument and scos returns 1, less
+ * a tiny term, each as the program rounds it.
+ */
+#define FP_TRIG_TINY	0x3fd78000
+
+/* More passes than fp_trig_reducex() can need: see there. */
+#define FP_TRIG_PASSES	600
+
+/*
+ * The argument reduction for 15 pi and more (REDUCEX): r becomes
+ * r - N pi/2, at most pi/4 in magnitude, and the low bits of N are
+ * returned.
+ *
+ * Each pass takes a multiple of 2^L pi/2 off the remainder, which is
+ * held as R + r with r below the last bit of R.  For an R of exponent K
+ * a pass has L = K - 27 and leaves a remainder below 2^L pi/4, whose
+ * exponent is K - 28 at most.  From 16383 the exponent is down to 28,
+ * where the last pass has L = 0, after 585 passes at most.  The largest
+ * number takes 560 passes, and 565 are the most that were found for a
+ * number of the largest exponent (0x7ffe0000 0xd43fc644 0x9585fe0b).
+ *
+ * The end of the loop does not rest on that arithmetic alone: no task
+ * may stay in the kernel for a slip in it.  After FP_TRIG_PASSES passes
+ * that were not the last the reduction gives up and returns false: no
+ * number of this remainder is to be taken for a result, and the
+ * instruction returns the NaN of an operand error.
+ */
+static bool fp_trig_reducex(struct fp_ext *r, int *np)
+{
+	struct fp_ext rl = { .exp = 0 };
+	struct fp_ext n, p, w, wl, c;
+	unsigned int pass;
+	int k, l;
+
+	/*
+	 * An argument this large could overflow in the first pass: take
+	 * 2^16383 pi/2 off first, in two pieces of which the first is exact.
+	 */
+	if (fpt_compact(r) == 0x7ffeffff) {
+		c = (struct fp_ext)FPT_EXT(!r->sign, 0x7ffe, 0xc90fdaa2, 0);
+		w = (struct fp_ext)FPT_EXT(!r->sign, 0x7fdc, 0x85a308d3, 0);
+		fpt_add(r, &c);
+		rl = *r;
+		fpt_add(r, &w);
+		fpt_sub(&rl, r);
+		fpt_add(&rl, &w);
+	}
+
+	for (pass = 1; ; pass++) {
+		/* R is 2^K or more; the last pass has L = 0 */
+		k = r->exp - 0x3fff;
+		l = k <= 28 ? 0 : k - 27;
+
+		/*
+		 * N = R * 2^-L * 2/pi to the nearest integer: adding and
+		 * subtracting 2^63 of the sign of R rounds it.
+		 */
+		c = (struct fp_ext)FPT_EXT(0, 0x3ffe - l, 0xa2f9836e,
+					   0x4e44152a);
+		n = *r;
+		fpt_mul(&n, &c);
+		c = (struct fp_ext)FPT_EXT(r->sign, 0x3fff + 63, 0x80000000, 0);
+		fpt_add(&n, &c);
+		fpt_sub(&n, &c);
+
+		/* W = N * P1 and w = N * P2, with P1 + P2 = 2^L pi/2 */
+		c = (struct fp_ext)FPT_EXT(0, 0x3fff + l, 0xc90fdaa2, 0);
+		w = n;
+		fpt_mul(&w, &c);
+		c = (struct fp_ext)FPT_EXT(0, 0x3fdd + l, 0x85a308d3, 0);
+		wl = n;
+		fpt_mul(&wl, &c);
+
+		/* P + p = W + w, with p below the last bit of P */
+		p = w;
+		fpt_add(&p, &wl);
+		fpt_sub(&w, &p);
+
+		/* A = R - P and a = r - p */
+		fpt_sub(r, &p);
+		fpt_add(&w, &wl);
+		p = *r;
+		fpt_sub(&rl, &w);
+
+		/* the new R = A + a */
+		fpt_add(r, &rl);
+		if (!l)
+			break;
+		if (pass == FP_TRIG_PASSES)
+			return false;
+
+		/* and the new r = (A - R) + a */
+		fpt_sub(&p, r);
+		fpt_add(&rl, &p);
+
+		/* let other tasks run: a pass is about 2600 instructions */
+		if (!(pass & 7))
+			cond_resched();
+	}
+	*np = fpt_to_int(&n);
+
+	return true;
+}
+
+/*
+ * Reduce the argument of FSIN, FCOS, FSINCOS and FTAN, which is 2^-40
+ * or more in magnitude: r = x - N pi/2, at most pi/4 in magnitude, and
+ * the low bits of N go to np.  False if the reduction failed, which no
+ * argument makes it do: see fp_trig_reducex().
+ */
+static bool fp_trig_reduce(struct fp_ext *r, int *np,
+			   const struct fp_ext *x)
+{
+	struct fp_ext n;
+	int k;
+
+	*r = *x;
+	if (fpt_compact(x) >= 0x4004bc7e)
+		return fp_trig_reducex(r, np);
+
+	/* below 15 pi: N pi/2 from the table, as Y1 + Y2 */
+	n = *x;
+	fpt_mul(&n, &fp_trig_twobypi);
+	k = fpt_to_int(&n);
+	fpt_sub(r, &fpt_pitbl[k + 32][0]);
+	fpt_sub(r, &fpt_pitbl[k + 32][1]);
+	*np = k;
+
+	return true;
+}
+
+/*
+ * sin(r + k pi/2) for an r of at most pi/4 in magnitude: the sine or
+ * the cosine of r by the polynomial of the package, with the sign of
+ * the quadrant.  The last operation is fpt_last_add()'s, and res is
+ * what it leaves.  r is not kept.
+ */
+static void fp_sin_poly(struct fp_ext *res, struct fp_ext *r, int k,
+			struct fpt_env *env)
+{
+	struct fp_ext s, t, a, b;
+
+	/* S = R * R and T = S * S */
+	s = *r;
+	fpt_mul(&s, r);
+	t = s;
+	fpt_mul(&t, &s);
+
+	if (!(k & 1)) {
+		/*
+		 * With R' = R of the quadrant's sign, the sine is
+		 * R' + R' * S * ([A1 + T * (A3 + T * (A5 + T * A7))] +
+		 *		  [S * (A2 + T * (A4 + T * A6))])
+		 */
+		if (k & 2)
+			r->sign = !r->sign;
+		a = fp_sin_a7;
+		b = fp_sin_a6;
+		fpt_mul(&a, &t);
+		fpt_mul(&b, &t);
+		fpt_add(&a, &fp_sin_a5);
+		fpt_add(&b, &fp_sin_a4);
+		fpt_mul(&a, &t);
+		fpt_mul(&b, &t);
+		fpt_add(&a, &fp_sin_a3);
+		fpt_add(&b, &fp_sin_a2);
+		fpt_mul(&t, &a);
+		fpt_mul(&b, &s);
+		fpt_add(&t, &fp_sin_a1);
+		fpt_mul(&s, r);
+		fpt_add(&t, &b);
+		fpt_mul(&s, &t);
+
+		fpt_last_add(&s, r, env);
+	} else {
+		/*
+		 * With S' = S of the quadrant's sign, the cosine is
+		 * +-1 + S' * ([B1 + T * (B3 + T * (B5 + T * B7))] +
+		 *	       [S * (B2 + T * (B4 + T * (B6 + T * B8)))])
+		 */
+		*r = s;
+		r->sign = (k & 2) != 0;
+		b = fp_cos_b8;
+		a = fp_cos_b7;
+		fpt_mul(&b, &t);
+		fpt_mul(&a, &t);
+		fpt_add(&b, &fp_cos_b6);
+		fpt_add(&a, &fp_cos_b5);
+		fpt_mul(&b, &t);
+		fpt_mul(&a, &t);
+		fpt_add(&b, &fp_cos_b4);
+		fpt_add(&a, &fp_cos_b3);
+		fpt_mul(&b, &t);
+		fpt_mul(&t, &a);
+		fpt_add(&b, &fp_cos_b2);
+		fpt_add(&t, &fp_cos_b1);
+		fpt_mul(&s, &b);
+		fpt_add(&s, &t);
+		fpt_mul(&s, r);
+
+		fpt_pow2(&t, 0);
+		t.sign = (k & 2) != 0;
+		fpt_last_add(&s, &t, env);
+	}
+	*res = s;
+}
 
 struct fp_ext *fp_fsin(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsin\n");
+	struct fpt_env env;
+	struct fp_ext r;
+	int n;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fsin\n");
 
-	return dest;
+	if (fpt_special(FPT_FSIN, dest, src))
+		return dest;
+
+	/* below 2^-40 the sine is the argument, as the program rounds it */
+	if (fpt_compact(src) < FP_TRIG_TINY)
+		return fpt_computed(dest, src, NULL);
+
+	fpt_enter(&env);
+	if (!fp_trig_reduce(&r, &n, src))
+		return fpt_operr(dest, &env);
+	fp_sin_poly(&r, &r, n, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_fcos(struct fp_ext *dest, struct fp_ext *src)
