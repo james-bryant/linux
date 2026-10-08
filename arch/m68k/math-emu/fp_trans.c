@@ -175,6 +175,18 @@ static const struct {
 	unsigned char result;
 	unsigned char exc;
 } fpt_table[FPT_INSNS][2 * FPT_CLASSES] = {
+	/*
+	 * The package (setoxd) adds a tiny term of the operand's sign to 1
+	 * for a denormalized operand, so that the rounding mode decides.
+	 */
+	[FPT_FETOX] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_P(FPT_DENORM)]	= { FPT_R_ONE_UP, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_ONE_DOWN, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_ZERO },
+	},
 };
 
 /*

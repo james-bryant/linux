@@ -7,4 +7,5 @@
 #ccflags-y := -DFPU_EMU_DEBUG
 
 obj-y		:= fp_entry.o fp_scan.o fp_util.o fp_move.o fp_movem.o \
-			fp_cond.o fp_arith.o fp_log.o fp_trig.o fp_trans.o
+			fp_cond.o fp_arith.o fp_log.o fp_trig.o fp_trans.o \
+			fp_tables.o

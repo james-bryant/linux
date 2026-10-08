@@ -42,6 +42,9 @@ enum fpt_insn {
 #define FPT_EXT(s, e, hi, lo)						\
 	{ .sign = (s), .exp = (e), .mant.m32 = { (hi), (lo) } }
 
+/* fp_tables.c: value and correction of each entry */
+extern const struct fp_ext fpt_exptbl[64][2];
+
 /*
  * What fpt_enter() takes from the program, until the last operation of
  * the algorithm or what ends it gives it back.
@@ -73,6 +76,10 @@ void fpt_last_div(struct fp_ext *dest, const struct fp_ext *src,
 		  struct fpt_env *env);
 void fpt_overflow(struct fp_ext *res, int sign, struct fpt_env *env);
 void fpt_underflow(struct fp_ext *res, struct fpt_env *env);
+
+/* fp_log.c: the algorithms that other instructions use */
+void fp_etox(struct fp_ext *res, const struct fp_ext *x,
+	     struct fpt_env *env);
 
 int fpt_to_int(const struct fp_ext *src);
 void fpt_from_int(struct fp_ext *dest, int val);

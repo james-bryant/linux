@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * fp_tables.c: tables of the transcendental instructions of the
+ * Linux-m68k floating point emulator.
+ *
+ * The tables are taken from Motorola's floating-point package for the
+ * 68040 (arch/m68k/fpsp040).  This is a modified version of those parts
+ * of the package: the numbers are the package's, in another form.
+ * Where the package has a number in single precision or in a short
+ * form of its own, as the second number of an entry often is, it is
+ * the same number in the emulator's extended format here.  The package
+ * comes with this notice (arch/m68k/fpsp040/README):
+ *
+ *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
+ *	M68000 Hi-Performance Microprocessor Division
+ *	M68040 Software Package
+ *
+ *	M68040 Software Package Copyright (c) 1993, 1994 Motorola Inc.
+ *	All rights reserved.
+ *
+ *	THE SOFTWARE is provided on an "AS IS" basis and without warranty.
+ *	To the maximum extent permitted by applicable law,
+ *	MOTOROLA DISCLAIMS ALL WARRANTIES WHETHER EXPRESS OR IMPLIED,
+ *	INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A
+ *	PARTICULAR PURPOSE and any warranty against infringement with
+ *	regard to the SOFTWARE (INCLUDING ANY MODIFIED VERSIONS THEREOF)
+ *	and any accompanying written materials.
+ *
+ *	To the maximum extent permitted by applicable law,
+ *	IN NO EVENT SHALL MOTOROLA BE LIABLE FOR ANY DAMAGES WHATSOEVER
+ *	(INCLUDING WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS
+ *	PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION, OR
+ *	OTHER PECUNIARY LOSS) ARISING OF THE USE OR INABILITY TO USE THE
+ *	SOFTWARE.  Motorola assumes no responsibility for the maintenance
+ *	and support of the SOFTWARE.
+ *
+ *	You are hereby granted a copyright license to use, modify, and
+ *	distribute the SOFTWARE so long as this entire notice is retained
+ *	without alteration in any modified and/or redistributed versions,
+ *	and that such modified versions are clearly identified as such.
+ *	No licenses are granted by implication, estoppel or otherwise
+ *	under any patents or trademarks of Motorola, Inc.
+ */
+
+#include "fp_trans.h"
+
+/*
+ * The exponential instructions.
+ *
+ * 2^(J/64) for J = 0 to 63 as T + t: EXPTBL of setox.S.  T has 62
+ * significant bits, so that T - 1, T - 2 and T - 8 are exact.
+ */
+const struct fp_ext fpt_exptbl[64][2] = {
+	{ FPT_EXT(0, 0x3fff, 0x80000000, 0x00000000),
+	  FPT_EXT(0, 0x0000, 0x00000000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x8164d1f3, 0xbc030774),
+	  FPT_EXT(1, 0x3fbf, 0x841a9b00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x82cd8698, 0xac2ba1d8),
+	  FPT_EXT(1, 0x3fbf, 0xc1d5b900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x843a28c3, 0xacde4048),
+	  FPT_EXT(1, 0x3fc0, 0xf2836900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x85aac367, 0xcc487b14),
+	  FPT_EXT(0, 0x3fbf, 0xc5c95c00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x871f6196, 0x9e8d1010),
+	  FPT_EXT(0, 0x3fbd, 0xe85c9f00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x88980e80, 0x92da8528),
+	  FPT_EXT(1, 0x3fbf, 0xa2072900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x8a14d575, 0x496efd9c),
+	  FPT_EXT(1, 0x3fc0, 0xfbf9af00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x8b95c1e3, 0xea8bd6e8),
+	  FPT_EXT(1, 0x3fc0, 0x820dcf00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x8d1adf5b, 0x7e5ba9e4),
+	  FPT_EXT(0, 0x3fc0, 0xda63da00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x8ea4398b, 0x45cd53c0),
+	  FPT_EXT(0, 0x3fbd, 0xb7005100, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x9031dc43, 0x1466b1dc),
+	  FPT_EXT(0, 0x3fbe, 0xeeb02900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x91c3d373, 0xab11c338),
+	  FPT_EXT(1, 0x3fc0, 0xf8149400, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x935a2b2f, 0x13e6e92c),
+	  FPT_EXT(1, 0x3fbd, 0xb319b000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x94f4efa8, 0xfef70960),
+	  FPT_EXT(0, 0x3fc0, 0x97457d00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x96942d37, 0x20185a00),
+	  FPT_EXT(0, 0x3fbe, 0x91d53700, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x9837f051, 0x8db8a970),
+	  FPT_EXT(1, 0x3fbf, 0xb952dd00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x99e04593, 0x20b7fa64),
+	  FPT_EXT(0, 0x3fbf, 0xe4308700, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x9b8d39b9, 0xd54e5538),
+	  FPT_EXT(0, 0x3fbf, 0xa2a81800, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x9d3ed9a7, 0x2cffb750),
+	  FPT_EXT(0, 0x3fbf, 0xde494d00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0x9ef53260, 0x91a111ac),
+	  FPT_EXT(0, 0x3fc0, 0xd0489000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa0b0510f, 0xb9714fc4),
+	  FPT_EXT(1, 0x3fc0, 0xf3691c00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa2704303, 0x0c496818),
+	  FPT_EXT(0, 0x3fbf, 0x9b7a0500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa43515ae, 0x09e680a0),
+	  FPT_EXT(1, 0x3fc0, 0xf9712600, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa5fed6a9, 0xb15138ec),
+	  FPT_EXT(1, 0x3fc0, 0xf1a14000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa7cd93b4, 0xe9653568),
+	  FPT_EXT(0, 0x3fc0, 0xcf62da00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xa9a15ab4, 0xea7c0ef8),
+	  FPT_EXT(0, 0x3fbe, 0xa83c4a00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xab7a39b5, 0xa93ed338),
+	  FPT_EXT(1, 0x3fbf, 0x9a7fdc00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xad583eea, 0x42a14ac8),
+	  FPT_EXT(1, 0x3fc0, 0xdb3fac00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xaf3b78ad, 0x690a4374),
+	  FPT_EXT(0, 0x3fbf, 0xdf261000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xb123f581, 0xd2ac2590),
+	  FPT_EXT(1, 0x3fbe, 0xf05f9000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xb311c412, 0xa9112488),
+	  FPT_EXT(0, 0x3fc0, 0x9f678a00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xb504f333, 0xf9de6484),
+	  FPT_EXT(0, 0x3fbe, 0xb2fb1300, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xb6fd91e3, 0x28d17790),
+	  FPT_EXT(0, 0x3fc0, 0x838b3000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xb8fbaf47, 0x62fb9ee8),
+	  FPT_EXT(0, 0x3fc0, 0x8dc3cc00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xbaff5ab2, 0x133e45fc),
+	  FPT_EXT(1, 0x3fbf, 0x8b2ae600, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xbd08a39f, 0x580c36c0),
+	  FPT_EXT(1, 0x3fc0, 0xabbf7000, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xbf1799b6, 0x7a731084),
+	  FPT_EXT(1, 0x3fc0, 0x8bf51800, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xc12c4cca, 0x66709458),
+	  FPT_EXT(1, 0x3fc0, 0xc1dd4100, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xc346ccda, 0x24976408),
+	  FPT_EXT(1, 0x3fbf, 0xdf137b00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xc5672a11, 0x5506dadc),
+	  FPT_EXT(0, 0x3fc0, 0x9f156800, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xc78d74c8, 0xabb9b15c),
+	  FPT_EXT(0, 0x3fbf, 0xc13a2e00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xc9b9bd86, 0x6e2f27a4),
+	  FPT_EXT(1, 0x3fc0, 0xbf8f0300, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xcbec14fe, 0xf2727c5c),
+	  FPT_EXT(0, 0x3fbf, 0xf4907d00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xce248c15, 0x1f8480e4),
+	  FPT_EXT(1, 0x3fbc, 0xee53e400, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xd06333da, 0xef2b2594),
+	  FPT_EXT(0, 0x3fbf, 0xd6d45c00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xd2a81d91, 0xf12ae45c),
+	  FPT_EXT(1, 0x3fc0, 0xf6edb900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xd4f35aab, 0xcfedfa20),
+	  FPT_EXT(1, 0x3fbf, 0xa6de2100, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xd744fcca, 0xd69d6af4),
+	  FPT_EXT(0, 0x3fbd, 0xe69a2f00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xd99d15c2, 0x78afd7b4),
+	  FPT_EXT(0, 0x3fc0, 0xff439f00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xdbfbb797, 0xdaf23754),
+	  FPT_EXT(0, 0x3fc0, 0x9ec20700, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xde60f482, 0x5e0e9124),
+	  FPT_EXT(1, 0x3fbd, 0x8be17500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xe0ccdeec, 0x2a94e110),
+	  FPT_EXT(0, 0x3fc0, 0x832c4b00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xe33f8972, 0xbe8a5a50),
+	  FPT_EXT(0, 0x3fc0, 0x84dff500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xe5b906e7, 0x7c8348a8),
+	  FPT_EXT(0, 0x3fbc, 0xf2f47a00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xe8396a50, 0x3c4bdc68),
+	  FPT_EXT(0, 0x3fbe, 0xf22f2200, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xeac0c6e7, 0xdd243930),
+	  FPT_EXT(1, 0x3fc0, 0x97e94500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xed4f301e, 0xd9942b84),
+	  FPT_EXT(0, 0x3fbe, 0xc01a5b00, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xefe4b99b, 0xdcdaf5cc),
+	  FPT_EXT(1, 0x3fbf, 0xb9a9e300, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xf281773c, 0x59ffb138),
+	  FPT_EXT(0, 0x3fc0, 0xf44c0500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xf5257d15, 0x2486cc2c),
+	  FPT_EXT(0, 0x3fbe, 0xf73a1900, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xf7d0df73, 0x0ad13bb8),
+	  FPT_EXT(0, 0x3fbf, 0xfe90d500, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xfa83b2db, 0x722a033c),
+	  FPT_EXT(1, 0x3fc0, 0xc1ed2200, 0x00000000) },
+	{ FPT_EXT(0, 0x3fff, 0xfd3e0c0c, 0xf486c174),
+	  FPT_EXT(0, 0x3fbf, 0x853f3a00, 0x00000000) },
+};
