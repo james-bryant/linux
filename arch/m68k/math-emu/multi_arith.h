@@ -87,18 +87,27 @@ static inline int fp_overnormalize(struct fp_ext *reg)
 	return shift;
 }
 
+/*
+ * The multi-word add, subtract and shift below hand the carry from one
+ * instruction to the next in the X condition-code bit.  Each is written
+ * as a single asm statement: the compiler may neither reorder the
+ * instructions nor place one of its own that writes X between them, both
+ * of which it is free to do with the separate statements this once was.
+ */
 static inline int fp_addmant(struct fp_ext *dest, struct fp_ext *src)
 {
 	int carry;
 
-	/* we assume here, gcc only insert move and a clr instr */
-	asm volatile ("add.b %1,%0" : "=d,g" (dest->lowmant)
-		: "g,d" (src->lowmant), "0,0" (dest->lowmant));
-	asm volatile ("addx.l %1,%0" : "=d" (dest->mant.m32[1])
-		: "d" (src->mant.m32[1]), "0" (dest->mant.m32[1]));
-	asm volatile ("addx.l %1,%0" : "=d" (dest->mant.m32[0])
-		: "d" (src->mant.m32[0]), "0" (dest->mant.m32[0]));
-	asm volatile ("addx.l %0,%0" : "=d" (carry) : "0" (0));
+	asm volatile ("add.b %4,%0\n\t"
+		      "addx.l %5,%1\n\t"
+		      "addx.l %6,%2\n\t"
+		      "addx.l %3,%3"
+		      : "=&d" (dest->lowmant), "=&d" (dest->mant.m32[1]),
+			"=&d" (dest->mant.m32[0]), "=&d" (carry)
+		      : "d" (src->lowmant), "d" (src->mant.m32[1]),
+			"d" (src->mant.m32[0]), "0" (dest->lowmant),
+			"1" (dest->mant.m32[1]), "2" (dest->mant.m32[0]),
+			"3" (0));
 
 	return carry;
 }
@@ -121,13 +130,14 @@ static inline int fp_addcarry(struct fp_ext *reg)
 static inline void fp_submant(struct fp_ext *dest, struct fp_ext *src1,
 			      struct fp_ext *src2)
 {
-	/* we assume here, gcc only insert move and a clr instr */
-	asm volatile ("sub.b %1,%0" : "=d,g" (dest->lowmant)
-		: "g,d" (src2->lowmant), "0,0" (src1->lowmant));
-	asm volatile ("subx.l %1,%0" : "=d" (dest->mant.m32[1])
-		: "d" (src2->mant.m32[1]), "0" (src1->mant.m32[1]));
-	asm volatile ("subx.l %1,%0" : "=d" (dest->mant.m32[0])
-		: "d" (src2->mant.m32[0]), "0" (src1->mant.m32[0]));
+	asm volatile ("sub.b %3,%0\n\t"
+		      "subx.l %4,%1\n\t"
+		      "subx.l %5,%2"
+		      : "=&d" (dest->lowmant), "=&d" (dest->mant.m32[1]),
+			"=&d" (dest->mant.m32[0])
+		      : "d" (src2->lowmant), "d" (src2->mant.m32[1]),
+			"d" (src2->mant.m32[0]), "0" (src1->lowmant),
+			"1" (src1->mant.m32[1]), "2" (src1->mant.m32[0]));
 }
 
 #define fp_mul64(desth, destl, src1, src2) ({				\
@@ -138,34 +148,39 @@ static inline void fp_submant(struct fp_ext *dest, struct fp_ext *src1,
 	asm ("divu.l %2,%1:%0" : "=d" (quot), "=d" (rem)		\
 		: "dm" (div), "1" (srch), "0" (srcl))
 #define fp_add64(dest1, dest2, src1, src2) ({				\
-	asm ("add.l %1,%0" : "=d,dm" (dest2)				\
-		: "dm,d" (src2), "0,0" (dest2));			\
-	asm ("addx.l %1,%0" : "=d" (dest1)				\
-		: "d" (src1), "0" (dest1));				\
+	asm ("add.l %3,%0\n\t"						\
+	     "addx.l %2,%1"						\
+		: "=&d" (dest2), "=&d" (dest1)				\
+		: "d" (src1), "dm" (src2), "0" (dest2), "1" (dest1));	\
 })
 #define fp_addx96(dest, src) ({						\
-	/* we assume here, gcc only insert move and a clr instr */	\
-	asm volatile ("add.l %1,%0" : "=d,g" (dest->m32[2])		\
-		: "g,d" (temp.m32[1]), "0,0" (dest->m32[2]));		\
-	asm volatile ("addx.l %1,%0" : "=d" (dest->m32[1])		\
-		: "d" (temp.m32[0]), "0" (dest->m32[1]));		\
-	asm volatile ("addx.l %1,%0" : "=d" (dest->m32[0])		\
-		: "d" (0), "0" (dest->m32[0]));				\
+	asm volatile ("add.l %3,%0\n\t"					\
+		      "addx.l %4,%1\n\t"				\
+		      "addx.l %5,%2"					\
+		: "=&d" ((dest)->m32[2]), "=&d" ((dest)->m32[1]),	\
+		  "=&d" ((dest)->m32[0])				\
+		: "dm" ((src).m32[1]), "d" ((src).m32[0]), "d" (0UL),	\
+		  "0" ((dest)->m32[2]), "1" ((dest)->m32[1]),		\
+		  "2" ((dest)->m32[0]));				\
 })
 #define fp_sub64(dest, src) ({						\
-	asm ("sub.l %1,%0" : "=d,dm" (dest.m32[1])			\
-		: "dm,d" (src.m32[1]), "0,0" (dest.m32[1]));		\
-	asm ("subx.l %1,%0" : "=d" (dest.m32[0])			\
-		: "d" (src.m32[0]), "0" (dest.m32[0]));			\
+	asm ("sub.l %3,%0\n\t"						\
+	     "subx.l %2,%1"						\
+		: "=&d" ((dest).m32[1]), "=&d" ((dest).m32[0])		\
+		: "d" ((src).m32[0]), "dm" ((src).m32[1]),		\
+		  "0" ((dest).m32[1]), "1" ((dest).m32[0]));		\
 })
 #define fp_sub96c(dest, srch, srcm, srcl) ({				\
 	char carry;							\
-	asm ("sub.l %1,%0" : "=d,dm" (dest.m32[2])			\
-		: "dm,d" (srcl), "0,0" (dest.m32[2]));			\
-	asm ("subx.l %1,%0" : "=d" (dest.m32[1])			\
-		: "d" (srcm), "0" (dest.m32[1]));			\
-	asm ("subx.l %2,%1; scs %0" : "=d" (carry), "=d" (dest.m32[0])	\
-		: "d" (srch), "1" (dest.m32[0]));			\
+	asm ("sub.l %4,%0\n\t"						\
+	     "subx.l %5,%1\n\t"						\
+	     "subx.l %6,%2\n\t"						\
+	     "scs %3"							\
+		: "=&d" ((dest).m32[2]), "=&d" ((dest).m32[1]),		\
+		  "=&d" ((dest).m32[0]), "=d" (carry)			\
+		: "dm" (srcl), "d" (srcm), "d" (srch),			\
+		  "0" ((dest).m32[2]), "1" ((dest).m32[1]),		\
+		  "2" ((dest).m32[0]));					\
 	carry;								\
 })
 
@@ -250,7 +265,7 @@ static inline void fp_dividemant(union fp_mant128 *dest, struct fp_ext *src,
 static inline void fp_putmant128(struct fp_ext *dest, union fp_mant128 *src,
 				 int shift)
 {
-	unsigned long tmp;
+	unsigned long tmp, dummy;
 
 	switch (shift) {
 	case 0:
@@ -260,24 +275,26 @@ static inline void fp_putmant128(struct fp_ext *dest, union fp_mant128 *src,
 			dest->lowmant |= 1;
 		break;
 	case 1:
-		asm volatile ("lsl.l #1,%0"
-			: "=d" (tmp) : "0" (src->m32[2]));
-		asm volatile ("roxl.l #1,%0"
-			: "=d" (dest->mant.m32[1]) : "0" (src->m32[1]));
-		asm volatile ("roxl.l #1,%0"
-			: "=d" (dest->mant.m32[0]) : "0" (src->m32[0]));
+		asm volatile ("lsl.l #1,%0\n\t"
+			      "roxl.l #1,%1\n\t"
+			      "roxl.l #1,%2"
+			: "=d" (tmp), "=d" (dest->mant.m32[1]),
+			  "=d" (dest->mant.m32[0])
+			: "0" (src->m32[2]), "1" (src->m32[1]),
+			  "2" (src->m32[0]));
 		dest->lowmant = tmp >> 24;
 		if (src->m32[3] || (tmp << 8))
 			dest->lowmant |= 1;
 		break;
 	case 31:
-		asm volatile ("lsr.l #1,%1; roxr.l #1,%0"
-			: "=d" (dest->mant.m32[0])
-			: "d" (src->m32[0]), "0" (src->m32[1]));
-		asm volatile ("roxr.l #1,%0"
-			: "=d" (dest->mant.m32[1]) : "0" (src->m32[2]));
-		asm volatile ("roxr.l #1,%0"
-			: "=d" (tmp) : "0" (src->m32[3]));
+		asm volatile ("lsr.l #1,%3\n\t"
+			      "roxr.l #1,%0\n\t"
+			      "roxr.l #1,%1\n\t"
+			      "roxr.l #1,%2"
+			: "=d" (dest->mant.m32[0]), "=d" (dest->mant.m32[1]),
+			  "=d" (tmp), "=d" (dummy)
+			: "0" (src->m32[1]), "1" (src->m32[2]),
+			  "2" (src->m32[3]), "3" (src->m32[0]));
 		dest->lowmant = tmp >> 24;
 		if (src->m32[3] << 7)
 			dest->lowmant |= 1;
