@@ -260,6 +260,15 @@ static inline void fp_dividemant(union fp_mant128 *dest, struct fp_ext *src,
 			*mantp += 1;
 		}
 	}
+
+	/*
+	 * src now holds the remainder.  If it is not zero, the quotient
+	 * goes on below its last bit here: set that bit, which
+	 * fp_putmant128() takes into the sticky bit and nowhere else, so
+	 * that the rounding sees an inexact quotient.
+	 */
+	if (src->mant.m64)
+		dest->m32[3] |= 1;
 }
 
 static inline void fp_putmant128(struct fp_ext *dest, union fp_mant128 *src,
