@@ -19,10 +19,11 @@
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
  * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(),
- * fp_fcosh() and fp_fsincos0() to fp_fsincos7(), with the functions and
- * the constants above them that they use, are the package's algorithms
- * written in C, and the constants are the package's in another form.
- * The package comes with this notice (arch/m68k/fpsp040/README):
+ * fp_fcosh(), fp_ftanh() and fp_fsincos0() to fp_fsincos7(), with the
+ * functions and the constants above them that they use, are the
+ * package's algorithms written in C, and the constants are the package's
+ * in another form.  The package comes with this notice
+ * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -54,7 +55,7 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_ftanh() and fp_fatanh() are not taken from the package.
+ * fp_fatanh() is not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -818,13 +819,61 @@ struct fp_ext *fp_fcosh(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * FTANH follows stanh of the package (arch/m68k/fpsp040/stanh.S).  From
+ * 2^-40 to (5/2) log 2, with Z = e^(2|x|) - 1,
+ *
+ *	tanh x = sign(x) * Z / (Z + 2)
+ *
+ * from there to 50 log 2, with Z = e^(2|x|), sign(x) * (1 - 2 / (Z + 1)),
+ * beyond that 1 less a tiny term, and below 2^-40 x itself.  The package
+ * states an error below 3 units in the last place.
+ */
 struct fp_ext *fp_ftanh(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("ftanh\n");
+	unsigned int compact;
+	struct fpt_env env;
+	struct fp_ext y, z, r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "ftanh\n");
 
-	return dest;
+	if (fpt_special(FPT_FTANH, dest, src))
+		return dest;
+
+	compact = fpt_compact(src);
+	if (compact < FP_TRIG_TINY)
+		return fpt_computed(dest, src, NULL);
+
+	fpt_enter(&env);
+	y = *src;
+	y.sign = 0;
+	y.exp++;
+	if (compact > 0x40048aa1) {
+		fpt_pow2(&r, 0);
+		r.sign = src->sign;
+		fpt_pow2(&z, -126);
+		z.sign = !src->sign;
+		fpt_last_add(&r, &z, &env);
+	} else if (compact > 0x3fffddce) {
+		fp_etox(&z, &y, NULL);
+		fpt_pow2(&y, 0);
+		fpt_add(&z, &y);
+		fpt_pow2(&y, 1);
+		y.sign = !src->sign;
+		fpt_div(&y, &z);
+		fpt_pow2(&r, 0);
+		r.sign = src->sign;
+		fpt_last_add(&r, &y, &env);
+	} else {
+		fp_etoxm1(&r, &y, NULL);
+		z = r;
+		fpt_pow2(&y, 1);
+		fpt_add(&z, &y);
+		z.sign = src->sign;
+		fpt_last_div(&r, &z, &env);
+	}
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_fatanh(struct fp_ext *dest, struct fp_ext *src)
