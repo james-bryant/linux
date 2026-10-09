@@ -217,6 +217,22 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_INF },
 		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
 	},
+	/*
+	 * A denormalized operand as for FETOXM1.  For -1 the manuals have
+	 * DZ with a NaN where they describe the instruction and with minus
+	 * infinity where they describe the exception: the package (sslognp1)
+	 * returns minus infinity.
+	 */
+	[FPT_FLOGNP1] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 	/* a denormalized operand as for FETOXM1 */
 	[FPT_FSIN] = {
 		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },

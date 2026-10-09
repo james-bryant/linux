@@ -85,6 +85,8 @@ void fp_etox(struct fp_ext *res, const struct fp_ext *x,
 	     struct fpt_env *env);
 void fp_etoxm1(struct fp_ext *res, const struct fp_ext *x,
 	       struct fpt_env *env);
+void fp_lognp1(struct fp_ext *res, const struct fp_ext *x,
+	       struct fpt_env *env);
 
 int fpt_to_int(const struct fp_ext *src);
 void fpt_from_int(struct fp_ext *dest, int val);

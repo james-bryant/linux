@@ -18,8 +18,8 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox(),
- * fp_fetoxm1(), fp_ftwotox(), fp_ftentox() and fp_flogn(), with the
- * functions and the constants above them that they use, are the
+ * fp_fetoxm1(), fp_ftwotox(), fp_ftentox(), fp_flogn() and fp_flognp1(),
+ * with the functions and the constants above them that they use, are the
  * package's algorithms written in C, and the constants are the package's
  * in another form.  The package comes with this notice
  * (arch/m68k/fpsp040/README):
@@ -54,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsqrt(), fp_flognp1(), fp_flog10(), fp_flog2(), fp_fgetexp() and
- * fp_fgetman() are not taken from the package.
+ * fp_fsqrt(), fp_flog10(), fp_flog2(), fp_fgetexp() and fp_fgetman() are
+ * not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -889,13 +889,84 @@ struct fp_ext *fp_flogn(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * log(1 + x) for a normalized number above -1.  With env the last
+ * operation is rounded as the program asked, without env to nearest:
+ * see fpt_last_add().  FATANH uses this as well.
+ */
+void fp_lognp1(struct fp_ext *res, const struct fp_ext *x,
+	       struct fpt_env *env)
+{
+	struct fp_ext one, z, f;
+	unsigned int compact;
+
+	/*
+	 * Up to 2^-102 in magnitude: x itself, without an operation.  For
+	 * FLOGNP1 it is fpt_computed() that puts the program's state back.
+	 */
+	if (x->exp < 0x3f99 || (x->exp == 0x3f99 &&
+				x->mant.m32[0] == 0x80000000 &&
+				!x->mant.m32[1])) {
+		*res = *x;
+		return;
+	}
+
+	/* X = 1 + x, rounded: it is positive */
+	fpt_pow2(&one, 0);
+	*res = *x;
+	fpt_add(res, &one);
+
+	/* outside 1/2 to 3/2 the rounding has lost nothing that matters */
+	compact = fpt_compact(res);
+	if (compact < 0x3ffe8000 || compact > 0x3fffc000) {
+		fp_log_main(res, res->exp - 0x3fff, env);
+		return;
+	}
+
+	/* from about 15/16 to 17/16: U = 2 x / (1 + X) */
+	z = *x;
+	if (compact >= 0x3ffef07d && compact <= 0x3fff8841) {
+		fpt_add(&z, &z);
+		fpt_add(res, &one);
+		fp_log_near1(&z, res, env);
+		*res = z;
+		return;
+	}
+
+	/*
+	 * Else Y - F comes from x itself, which has bits that X has not:
+	 * (1 - F) + x for K = 0 and (2 - F) + 2 x for K = -1.
+	 */
+	f = (struct fp_ext)FPT_EXT(0, 0x3fff,
+		(res->mant.m32[0] & 0xfe000000) | 0x01000000, 0);
+	if (compact >= 0x3fff8000) {
+		*res = one;
+		fpt_sub(res, &f);
+		fpt_add(res, &z);
+		fp_log_table(res, 0, f.mant.m32[0] >> 25 & 63, env);
+	} else {
+		fpt_pow2(res, 1);
+		fpt_sub(res, &f);
+		fpt_add(&z, &z);
+		fpt_add(res, &z);
+		fp_log_table(res, -1, f.mant.m32[0] >> 25 & 63, env);
+	}
+}
+
 struct fp_ext *fp_flognp1(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("flognp1\n");
+	struct fpt_env env;
+	struct fp_ext r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "flognp1\n");
 
-	return dest;
+	if (fpt_special(FPT_FLOGNP1, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	fp_lognp1(&r, src, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_flog10(struct fp_ext *dest, struct fp_ext *src)
