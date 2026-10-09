@@ -17,11 +17,11 @@
 
 /*
  * This file contains a modified version of parts of Motorola's
- * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox()
- * and fp_fetoxm1(), with the functions and the constants above them that
- * they use, are the package's algorithms written in C, and the constants
- * are the package's in another form.  The package comes with this notice
- * (arch/m68k/fpsp040/README):
+ * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox(),
+ * fp_fetoxm1(), fp_ftwotox() and fp_ftentox(), with the functions and
+ * the constants above them that they use, are the package's algorithms
+ * written in C, and the constants are the package's in another form.
+ * The package comes with this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -53,9 +53,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsqrt(), fp_ftwotox(), fp_ftentox(), fp_flogn(), fp_flognp1(),
- * fp_flog10(), fp_flog2(), fp_fgetexp() and fp_fgetman() are not taken
- * from the package.
+ * fp_fsqrt(), fp_flogn(), fp_flognp1(), fp_flog10(), fp_flog2(),
+ * fp_fgetexp() and fp_fgetman() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -537,22 +536,174 @@ struct fp_ext *fp_fetoxm1(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * FTWOTOX and FTENTOX follow stwotox and stentox of the package
+ * (arch/m68k/fpsp040/stwotox.S).  With N = 64 x, or 64 x log 10 / log 2,
+ * to the nearest integer and N = 64 (M + M') + J, where M is about M',
+ *
+ *	2^x or 10^x = 2^M' * (2^M * 2^(J/64)) * e^R
+ *
+ * where 2^(J/64) comes from a table of this file's own and e^R - 1 from
+ * a polynomial in R, the rest of x as a natural logarithm.  The package
+ * states an error below 2 units in the last place.
+ *
+ * The constants of double precision in the package's form:
+ *
+ *	A1	0x3fe00000 0x00000000	64 log 10 / log 2
+ *	A2	0x3fc55555 0x55554a54		0x406a934f 0x0979a371
+ *	A3	0x3fa55555 0x55554cc1	the first part of log 2 / 64 log 10
+ *	A4	0x3f811112 0x302c712c		0x3f734413 0x509f8000
+ *	A5	0x3f56c16d 0x6f7bd0b2
+ *
+ * A1 is 1/2, which FETOX has as its own A1.
+ */
+static const struct fp_ext fp_log2 =
+	FPT_EXT(0, 0x3ffe, 0xb17217f7, 0xd1cf79ac);
+static const struct fp_ext fp_log10 =
+	FPT_EXT(0, 0x4000, 0x935d8ddd, 0xaaa8ac17);
+static const struct fp_ext fp_ten_l2ten64 =
+	FPT_EXT(0, 0x4006, 0xd49a784b, 0xcd1b8800);
+static const struct fp_ext fp_ten_l10two1 =
+	FPT_EXT(0, 0x3ff7, 0x9a209a84, 0xfc000000);
+static const struct fp_ext fp_ten_l10two2 =
+	FPT_EXT(1, 0x3fcd, 0xc0219dc1, 0xda994fd2);
+static const struct fp_ext fp_two_a2 =
+	FPT_EXT(0, 0x3ffc, 0xaaaaaaaa, 0xaa52a000);
+static const struct fp_ext fp_two_a3 =
+	FPT_EXT(0, 0x3ffa, 0xaaaaaaaa, 0xaa660800);
+static const struct fp_ext fp_two_a4 =
+	FPT_EXT(0, 0x3ff8, 0x88889181, 0x63896000);
+static const struct fp_ext fp_two_a5 =
+	FPT_EXT(0, 0x3ff5, 0xb60b6b7b, 0xde859000);
+
+/*
+ * The operands that take no reduction: below 2^-70 the result is 1 + x,
+ * which the rounding mode decides, and beyond the bound, which is 16480
+ * as a power of two, it is out of range.
+ */
+static bool fp_twoten_edge(struct fp_ext *res, const struct fp_ext *x,
+			   unsigned int bound, struct fpt_env *env)
+{
+	unsigned int compact = fpt_compact(x);
+
+	if (compact < 0x3fb98000) {
+		fpt_pow2(res, 0);
+		fpt_last_add(res, x, env);
+	} else if (compact <= bound) {
+		return false;
+	} else if (x->sign) {
+		fpt_underflow(res, env);
+	} else {
+		fpt_overflow(res, 0, env);
+	}
+
+	return true;
+}
+
+/* The result from R, which r is, and N: expr of the package. */
+static void fp_twoten_expr(struct fp_ext *r, int n, struct fpt_env *env)
+{
+	struct fp_ext s, p, q, fact1, fact2;
+	int l = n >> 6, m = l >> 1;
+
+	/* Fact1 + Fact2 = 2^M * 2^(J/64) */
+	fact1 = fpt_exp2tbl[n & 63][0];
+	fact1.exp += m;
+	fact2 = fpt_exp2tbl[n & 63][1];
+	fact2.exp += m;
+
+	/*
+	 * With S = R * R, e^R - 1 is
+	 * [R + R * S * (A2 + S * A4)] + [S * (A1 + S * (A3 + S * A5))]
+	 */
+	s = *r;
+	fpt_mul(&s, r);
+	p = fp_two_a5;
+	q = fp_two_a4;
+	fpt_mul(&p, &s);
+	fpt_mul(&q, &s);
+	fpt_add(&p, &fp_two_a3);
+	fpt_add(&q, &fp_two_a2);
+	fpt_mul(&p, &s);
+	fpt_mul(&q, &s);
+	fpt_add(&p, &fp_exp_a1);
+	fpt_mul(&q, r);
+	fpt_mul(&p, &s);
+	fpt_add(r, &q);
+	fpt_add(r, &p);
+
+	/* Fact1 + (Fact1 * (e^R - 1) + Fact2) */
+	fpt_mul(r, &fact1);
+	fpt_add(r, &fact2);
+	fpt_add(r, &fact1);
+
+	/* the last operation: times 2^M' */
+	fpt_pow2(&s, l - m);
+	fpt_last_mul(r, &s, env);
+}
+
 struct fp_ext *fp_ftwotox(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("ftwotox\n");
+	struct fpt_env env;
+	struct fp_ext n, r;
+	int k;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "ftwotox\n");
 
-	return dest;
+	if (fpt_special(FPT_FTWOTOX, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	if (!fp_twoten_edge(&r, src, 0x400d80c0, &env)) {
+		/* R = (x - N / 64) * log 2 */
+		n = *src;
+		fpt_pow2(&r, 6);
+		fpt_mul(&n, &r);
+		k = fpt_to_int(&n);
+		fpt_from_int(&n, k);
+		fpt_pow2(&r, -6);
+		fpt_mul(&n, &r);
+		r = *src;
+		fpt_sub(&r, &n);
+		fpt_mul(&r, &fp_log2);
+		fp_twoten_expr(&r, k, &env);
+	}
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_ftentox(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("ftentox\n");
+	struct fpt_env env;
+	struct fp_ext n, r, q;
+	int k;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "ftentox\n");
 
-	return dest;
+	if (fpt_special(FPT_FTENTOX, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	if (!fp_twoten_edge(&r, src, 0x400b9b07, &env)) {
+		/*
+		 * R = ((x - N * L1) - N * L2) * log 10, with
+		 * L1 + L2 = log 2 / 64 log 10
+		 */
+		n = *src;
+		fpt_mul(&n, &fp_ten_l2ten64);
+		k = fpt_to_int(&n);
+		fpt_from_int(&n, k);
+		q = n;
+		fpt_mul(&n, &fp_ten_l10two1);
+		fpt_mul(&q, &fp_ten_l10two2);
+		r = *src;
+		fpt_sub(&r, &n);
+		fpt_sub(&r, &q);
+		fpt_mul(&r, &fp_log10);
+		fp_twoten_expr(&r, k, &env);
+	}
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_flogn(struct fp_ext *dest, struct fp_ext *src)
