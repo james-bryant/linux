@@ -17,10 +17,10 @@
 
 /*
  * This file contains a modified version of parts of Motorola's
- * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox(),
- * with the functions and the constants above them that they use, are the
- * package's algorithms written in C, and the constants are the package's
- * in another form.  The package comes with this notice
+ * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox()
+ * and fp_fetoxm1(), with the functions and the constants above them that
+ * they use, are the package's algorithms written in C, and the constants
+ * are the package's in another form.  The package comes with this notice
  * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
@@ -53,9 +53,9 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsqrt(), fp_fetoxm1(), fp_ftwotox(), fp_ftentox(), fp_flogn(),
- * fp_flognp1(), fp_flog10(), fp_flog2(), fp_fgetexp() and fp_fgetman()
- * are not taken from the package.
+ * fp_fsqrt(), fp_ftwotox(), fp_ftentox(), fp_flogn(), fp_flognp1(),
+ * fp_flog10(), fp_flog2(), fp_fgetexp() and fp_fgetman() are not taken
+ * from the package.
  */
 
 #include "fp_emu.h"
@@ -149,15 +149,6 @@ struct fp_ext *fp_fsqrt(struct fp_ext *dest, struct fp_ext *src)
 		dest->lowmant = 0x81;
 	else
 		dest->lowmant = rem.m64 != 0;
-
-	return dest;
-}
-
-struct fp_ext *fp_fetoxm1(struct fp_ext *dest, struct fp_ext *src)
-{
-	uprint("fetoxm1\n");
-
-	fp_monadic_check(dest, src);
 
 	return dest;
 }
@@ -298,6 +289,250 @@ struct fp_ext *fp_fetox(struct fp_ext *dest, struct fp_ext *src)
 
 	fpt_enter(&env);
 	fp_etox(&r, src, &env);
+
+	return fpt_computed(dest, &r, &env);
+}
+
+/*
+ * FETOXM1 follows setoxm1 of the same file.  From 1/4 to 70 log 2 it
+ * reduces the operand as FETOX does and computes
+ *
+ *	e^x - 1 = 2^M * (2^(J/64) + 2^(J/64) * (e^R - 1) - 2^-M)
+ *
+ * in an order of additions that depends on M.  Below 1/4 it is a
+ * polynomial in x, below 2^-65 x itself, and beyond 70 log 2 either e^x
+ * or -1.  The package states an error below 0.85 units in the last
+ * place.
+ *
+ * The constants of single and double precision in the package's form:
+ *
+ *	A2	0x3fc55555 0x55555555	B3	0x3fa55555 0x55555555
+ *	A3	0x3fa55555 0x55554f5a	B4	0x3f811111 0x11111111
+ *	A4	0x3f811111 0x11174385	B5	0x3f56c16c 0x16c170e2
+ *	A5	0x3ab60b6a		B6	0x3f2a01a0 0x1a019df3
+ *	A6	0x3950097b		B7	0x3efa01a0 0x19d7cb68
+ *	B9	0x3493f281		B8	0x3ec71de3 0xa5774682
+ *	B10	0x32d73220		B11	0x310f8290
+ *	B12	0x2f30caa8
+ *
+ * A1 and B1 are 1/2, which FETOX has as its own A1.
+ */
+static const struct fp_ext fp_em1_a2 =
+	FPT_EXT(0, 0x3ffc, 0xaaaaaaaa, 0xaaaaa800);
+static const struct fp_ext fp_em1_a3 =
+	FPT_EXT(0, 0x3ffa, 0xaaaaaaaa, 0xaa7ad000);
+static const struct fp_ext fp_em1_a4 =
+	FPT_EXT(0, 0x3ff8, 0x88888888, 0xba1c2800);
+static const struct fp_ext fp_em1_a5 =
+	FPT_EXT(0, 0x3ff5, 0xb60b6a00, 0x00000000);
+static const struct fp_ext fp_em1_a6 =
+	FPT_EXT(0, 0x3ff2, 0xd0097b00, 0x00000000);
+
+static const struct fp_ext fp_em1_b2 =
+	FPT_EXT(0, 0x3ffc, 0xaaaaaaaa, 0xaaaaaaab);
+static const struct fp_ext fp_em1_b3 =
+	FPT_EXT(0, 0x3ffa, 0xaaaaaaaa, 0xaaaaa800);
+static const struct fp_ext fp_em1_b4 =
+	FPT_EXT(0, 0x3ff8, 0x88888888, 0x88888800);
+static const struct fp_ext fp_em1_b5 =
+	FPT_EXT(0, 0x3ff5, 0xb60b60b6, 0x0b871000);
+static const struct fp_ext fp_em1_b6 =
+	FPT_EXT(0, 0x3ff2, 0xd00d00d0, 0x0cef9800);
+static const struct fp_ext fp_em1_b7 =
+	FPT_EXT(0, 0x3fef, 0xd00d00ce, 0xbe5b4000);
+static const struct fp_ext fp_em1_b8 =
+	FPT_EXT(0, 0x3fec, 0xb8ef1d2b, 0xba341000);
+static const struct fp_ext fp_em1_b9 =
+	FPT_EXT(0, 0x3fe9, 0x93f28100, 0x00000000);
+static const struct fp_ext fp_em1_b10 =
+	FPT_EXT(0, 0x3fe5, 0xd7322000, 0x00000000);
+static const struct fp_ext fp_em1_b11 =
+	FPT_EXT(0, 0x3fe2, 0x8f829000, 0x00000000);
+static const struct fp_ext fp_em1_b12 =
+	FPT_EXT(0, 0x3fde, 0xb0caa800, 0x00000000);
+
+/* e^x - 1 for a normalized number below 1/4 in magnitude */
+static void fp_etoxm1_small(struct fp_ext *res, const struct fp_ext *x,
+			    struct fpt_env *env)
+{
+	struct fp_ext s, p, q;
+
+	/*
+	 * Below 2^-65: x less the tiny term 2^-16382, which the rounding
+	 * mode decides.  Against the smallest operands that term is not
+	 * tiny: for them the package scales x by 2^140 first, and the term
+	 * is then lost in every rounding mode.
+	 *
+	 * Here the package's code is not followed.  Its description
+	 * (setox.S, step 8.1) and the comment on its compare have these
+	 * operands end at 2^-16312, but the constant of the compare,
+	 * 0x00330000, is 2^-16332.  From there to 2^-16312 the code
+	 * returns x - 2^-16382, which is up to 8192 units in the last
+	 * place from e^x - 1.  The description's border is taken instead.
+	 * Motorola's package for the 68060 and QEMU's FPU have the code's
+	 * constant, so that this differs from all three in that range.
+	 */
+	if (x->exp < 0x3fbe) {
+		*res = *x;
+		fpt_pow2(&s, -16382);
+		s.sign = 1;
+		if (x->exp < 0x0047) {
+			fpt_pow2(&p, 140);
+			fpt_mul(res, &p);
+			fpt_add(res, &s);
+			fpt_pow2(&p, -140);
+			fpt_last_mul(res, &p, env);
+		} else {
+			fpt_last_add(res, &s, env);
+		}
+		return;
+	}
+
+	/*
+	 * With S = x * x, e^x - 1 is x + (S * B1 + Q) and Q is
+	 * [x * S * (B2 + S * (B4 + S * (B6 + S * (B8 + S * (B10 +
+	 *					       S * B12)))))] +
+	 * [S * S * (B3 + S * (B5 + S * (B7 + S * (B9 + S * B11))))]
+	 */
+	s = *x;
+	fpt_mul(&s, x);
+	p = fp_em1_b12;
+	fpt_mul(&p, &s);
+	q = fp_em1_b11;
+	fpt_add(&p, &fp_em1_b10);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_em1_b9);
+	fpt_add(&p, &fp_em1_b8);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_em1_b7);
+	fpt_add(&p, &fp_em1_b6);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_em1_b5);
+	fpt_add(&p, &fp_em1_b4);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_em1_b3);
+	fpt_add(&p, &fp_em1_b2);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, x);
+	fpt_mul(&s, &fp_exp_a1);
+	fpt_add(&p, &q);
+	fpt_add(&s, &p);
+
+	fpt_last_add(&s, x, env);
+	*res = s;
+}
+
+/*
+ * e^x - 1 for a normalized number.  With env the last operation is
+ * rounded as the program asked, without env to nearest: see
+ * fpt_last_add().  The hyperbolic instructions use this as well.
+ */
+void fp_etoxm1(struct fp_ext *res, const struct fp_ext *x,
+	       struct fpt_env *env)
+{
+	struct fp_ext n, r, s, p, q;
+	const struct fp_ext *t;
+	int k, m;
+
+	if (x->exp < 0x3ffd) {
+		fp_etoxm1_small(res, x, env);
+		return;
+	}
+
+	/* beyond 70 log 2: e^x, or -1 with a tiny term */
+	if (fpt_compact(x) > 0x4004c215) {
+		if (!x->sign) {
+			fp_etox(res, x, env);
+			return;
+		}
+		fpt_pow2(res, 0);
+		res->sign = 1;
+		fpt_pow2(&s, -126);
+		fpt_last_add(res, &s, env);
+		return;
+	}
+
+	/* N, M, J and R as for e^x */
+	r = *x;
+	fpt_mul(&r, &fp_exp_64byln2);
+	k = fpt_to_int(&r);
+	fpt_from_int(&n, k);
+	t = fpt_exptbl[k & 63];
+	m = k >> 6;
+	r = n;
+	fpt_mul(&r, &fp_exp_l1);
+	q = n;
+	fpt_mul(&q, &fp_exp_l2);
+	fpt_add(&r, x);
+	fpt_add(&r, &q);
+
+	/*
+	 * With S = R * R, e^R - 1 is
+	 * [R * S * (A2 + S * (A4 + S * A6))] +
+	 * [R + S * (A1 + S * (A3 + S * A5))]
+	 */
+	s = r;
+	fpt_mul(&s, &r);
+	p = fp_em1_a6;
+	fpt_mul(&p, &s);
+	q = s;
+	fpt_mul(&q, &fp_em1_a5);
+	fpt_add(&p, &fp_em1_a4);
+	fpt_add(&q, &fp_em1_a3);
+	fpt_mul(&p, &s);
+	fpt_mul(&q, &s);
+	fpt_add(&p, &fp_em1_a2);
+	fpt_add(&q, &fp_exp_a1);
+	fpt_mul(&p, &s);
+	fpt_mul(&s, &q);
+	fpt_mul(&p, &r);
+	fpt_add(&r, &s);
+	fpt_add(&r, &p);
+
+	/* p = T * (e^R - 1); then T + t + p - 2^-M, the small terms first */
+	fpt_mul(&r, &t[0]);
+	fpt_pow2(&s, -m);
+	s.sign = 1;
+	if (m > 63) {
+		q = t[1];
+		fpt_add(&q, &s);
+		fpt_add(&r, &q);
+		fpt_add(&r, &t[0]);
+	} else if (m < -3) {
+		fpt_add(&r, &t[1]);
+		fpt_add(&r, &t[0]);
+		fpt_add(&r, &s);
+	} else {
+		q = t[0];
+		fpt_add(&r, &t[1]);
+		fpt_add(&q, &s);
+		fpt_add(&r, &q);
+	}
+
+	/* the last operation: times 2^M */
+	fpt_pow2(&s, m);
+	fpt_last_mul(&r, &s, env);
+	*res = r;
+}
+
+struct fp_ext *fp_fetoxm1(struct fp_ext *dest, struct fp_ext *src)
+{
+	struct fpt_env env;
+	struct fp_ext r;
+
+	dprint(PINSTR, "fetoxm1\n");
+
+	if (fpt_special(FPT_FETOXM1, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	fp_etoxm1(&r, src, &env);
 
 	return fpt_computed(dest, &r, &env);
 }
