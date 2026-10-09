@@ -18,11 +18,11 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * fp_fcos(), fp_ftan(), fp_fatan() and fp_fsincos0() to fp_fsincos7(),
- * with the functions and the constants above them that they use, are the
- * package's algorithms written in C, and the constants are the package's
- * in another form.  The package comes with this notice
- * (arch/m68k/fpsp040/README):
+ * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan() and
+ * fp_fsincos0() to fp_fsincos7(), with the functions and the constants
+ * above them that they use, are the package's algorithms written in C,
+ * and the constants are the package's in another form.  The package
+ * comes with this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -54,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fasin(), fp_facos(), fp_fsinh(), fp_fcosh(), fp_ftanh() and
- * fp_fatanh() are not taken from the package.
+ * fp_fsinh(), fp_fcosh(), fp_ftanh() and fp_fatanh() are not taken from
+ * the package.
  */
 
 #include "fp_emu.h"
@@ -465,10 +465,13 @@ struct fp_ext *fp_ftan(struct fp_ext *dest, struct fp_ext *src)
 }
 
 /*
- * The arc tangent follows satan of the package (satan.S) in the same
- * way.  The package states an error below 2 units in the last place.
- * It does not keep that bound: results more than 2 units off were
- * found.
+ * The inverse trigonometric instructions follow satan, sasin and sacos
+ * of the package (satan.S, sasin.S and sacos.S) in the same way.  The
+ * package states an error below 2 units in the last place for the arc
+ * tangent and below 3 for the arc sine and the arc cosine, which it
+ * computes by the arc tangent.  It does not keep these bounds for the
+ * arc tangent and the arc sine: results more than 2 and more than 3
+ * units off were found.
  *
  * The constants of satan.S, which has them in double precision:
  *
@@ -639,20 +642,58 @@ static void fp_atan_terms(struct fp_ext *res, struct fp_ext *last,
 
 struct fp_ext *fp_fasin(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fasin\n");
+	struct fp_ext a, b, x;
+	struct fpt_env env;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fasin\n");
 
-	return dest;
+	/* a normalized operand is below 1 in magnitude from here on */
+	if (fpt_special(FPT_FASIN, dest, src))
+		return dest;
+
+	/* asin(x) = atan(x / sqrt((1 - x) * (1 + x))) */
+	fpt_enter(&env);
+	fpt_pow2(&a, 0);
+	b = a;
+	fpt_sub(&a, src);
+	fpt_add(&b, src);
+	fpt_mul(&a, &b);
+	fpt_sqrt(&b, &a);
+	x = *src;
+	fpt_div(&x, &b);
+	fp_atan_terms(&a, &b, &x);
+	fpt_last_add(&a, &b, &env);
+
+	return fpt_computed(dest, &a, &env);
 }
 
 struct fp_ext *fp_facos(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("facos\n");
+	struct fp_ext a, b, x;
+	struct fpt_env env;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "facos\n");
 
-	return dest;
+	/* a normalized operand is below 1 in magnitude from here on */
+	if (fpt_special(FPT_FACOS, dest, src))
+		return dest;
+
+	/* acos(x) = 2 * atan(sqrt((1 - x) / (1 + x))) */
+	fpt_enter(&env);
+	fpt_pow2(&b, 0);
+	a = *src;
+	a.sign = !a.sign;
+	fpt_add(&a, &b);
+	fpt_add(&b, src);
+	fpt_div(&a, &b);
+	fpt_sqrt(&x, &a);
+	fp_atan_terms(&a, &b, &x);
+	fpt_add(&a, &b);
+
+	/* the last operation is the doubling */
+	fpt_last_add(&a, &a, &env);
+
+	return fpt_computed(dest, &a, &env);
 }
 
 struct fp_ext *fp_fatan(struct fp_ext *dest, struct fp_ext *src)

@@ -44,9 +44,10 @@
  * floating-point package for the 68040 (arch/m68k/fpsp040): the table
  * fpt_table[] and the results fpt_results[] follow what the package's
  * routines for special operands return (do_func.S, tbldo.S and the
- * function's own file) wherever the manuals leave a result open, and
- * fpt_flags() sets INEX2 by the package's rule.  The package comes with
- * this notice (arch/m68k/fpsp040/README):
+ * function's own file) wherever the manuals leave a result open, two of
+ * the results are the package's own 64 bits of pi/2 and of pi (satan.S,
+ * sacos.S), and fpt_flags() sets INEX2 by the package's rule.  The
+ * package comes with this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -115,6 +116,8 @@ enum {
 	FPT_R_INF,
 	FPT_R_NAN,
 	FPT_R_PIBY2,
+	FPT_R_PIBY2_64,
+	FPT_R_PI_UP,
 	FPT_R_NEG = 0x80	/* flag: the result with a minus sign */
 };
 
@@ -157,6 +160,17 @@ static const struct fp_ext fpt_results[] = {
 		.exp = 0x3fff,
 		.mant.m32 = { 0xc90fdaa2, 0x2168c234 },
 	},
+	/* pi/2 as the package has it, rounded to the 64 bits */
+	[FPT_R_PIBY2_64] = {
+		.exp = 0x3fff,
+		.mant.m32 = { 0xc90fdaa2, 0x2168c235 },
+	},
+	/* pi as the package has it and a tiny term */
+	[FPT_R_PI_UP] = {
+		.lowmant = 0x01,
+		.exp = 0x4000,
+		.mant.m32 = { 0xc90fdaa2, 0x2168c235 },
+	},
 };
 
 /* the exception status byte of FPSR */
@@ -186,6 +200,44 @@ static const struct {
 	unsigned char result;
 	unsigned char exc;
 } fpt_table[FPT_INSNS][2 * FPT_CLASSES] = {
+	/*
+	 * The arc cosine of zero is pi/2, rounded as the program asked,
+	 * like the arc tangent of an infinity and for the same reason.  The
+	 * package returns its 64 bits unrounded here as well (ld_ppi2).
+	 * The rest is the package's: its 64 bits of pi/2, rounded, for a
+	 * denormalized operand (sacosd); for 1 a zero that is exact, and
+	 * for -1 its 64 bits of pi and a tiny term, so that the rounding
+	 * mode decides (sacos).
+	 */
+	[FPT_FACOS] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_PIBY2, FPT_INEX2 },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_PIBY2, FPT_INEX2 },
+		[FPT_P(FPT_DENORM)]	= { FPT_R_PIBY2_64, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_PIBY2_64, FPT_INEX2 },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_ZERO },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_PI_UP, FPT_INEX2 },
+		[FPT_P(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	/*
+	 * The arc sine of 1 or -1 is the package's 64 bits of pi/2 with
+	 * that sign, rounded as the program asked (sasin).
+	 */
+	[FPT_FASIN] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_PIBY2_64, FPT_INEX2 },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_PIBY2_64 | FPT_R_NEG,
+					    FPT_INEX2 },
+		[FPT_P(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 	/*
 	 * The arc tangent of an infinity is pi/2 with its sign, rounded as
 	 * the program asked.  The manuals give the result as pi/2 and say
