@@ -28,6 +28,10 @@
  * algorithm can leave them changed for the final rounding or for the
  * next instruction.
  *
+ * FSINCOS has a second result, which goes to its register by
+ * fpt_second() before the instruction returns the first.  It is rounded
+ * there, so fpt_second() makes sure of the program's state as well.
+ *
  * What an instruction returns for a zero, an infinity or a denormalized
  * number, and which exception bits a computed result gets, is not part
  * of an algorithm: the first is the table fpt_table[] and the second is
@@ -276,6 +280,30 @@ static const struct {
 		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
 		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
 		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	/*
+	 * FSINCOS: the sine, as that of FSIN, and with it the exception
+	 * bits of the instruction.
+	 */
+	[FPT_FSINCOS] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	/*
+	 * FSINCOS: the cosine, which has an entry wherever the sine has
+	 * one.  The exception bits are those of the sine.
+	 */
+	[FPT_FSINCOS_COS] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_P(FPT_DENORM)]	= { FPT_R_ONE },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_ONE },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN },
 	},
 	/* a denormalized operand as for FETOX (stentoxd, stwotoxd) */
 	[FPT_FTENTOX] = {
@@ -612,6 +640,40 @@ struct fp_ext *fpt_operr(struct fp_ext *dest, struct fpt_env *env)
 	fp_set_sr(FPSR_EXC_OPERR);
 
 	return dest;
+}
+
+/*
+ * Round a result to the program's precision in the program's mode, as
+ * fp_finalrounding() does before it sets the condition codes.  The
+ * rounding is in assembler and takes its argument in a0.
+ */
+static void fpt_roundresult(struct fp_ext *reg)
+{
+	register struct fp_ext *__reg asm("a0") = reg;
+
+	asm volatile("jsr fp_roundresult"
+		     : "+a" (__reg) :
+		     : "a1", "d0", "d1", "d2", "memory");
+}
+
+/*
+ * The second result of an instruction, which is FSINCOS: store it in
+ * its register, rounded as fp_finalrounding() rounds the result that
+ * the instruction returns.  The condition codes and the exception bits
+ * of the instruction are those of the result that it returns, so what
+ * this rounding sets is dropped.  env is what the algorithm entered
+ * with, or NULL if it never did.
+ */
+void fpt_second(struct fp_ext *reg, const struct fp_ext *res,
+		struct fpt_env *env)
+{
+	unsigned int fpsr;
+
+	fpt_restore(env);
+	fpsr = FPDATA->fpsr;
+	fpt_store(reg, res);
+	fpt_roundresult(reg);
+	FPDATA->fpsr = fpsr;
 }
 
 /*

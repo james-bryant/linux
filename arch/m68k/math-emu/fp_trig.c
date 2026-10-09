@@ -17,11 +17,11 @@
 
 /*
  * This file contains a modified version of parts of Motorola's
- * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin()
- * and fp_fcos(), with the functions and the constants above them that
- * they use, are the package's algorithms written in C, and the constants
- * are the package's in another form.  The package comes with this notice
- * (arch/m68k/fpsp040/README):
+ * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
+ * fp_fcos() and fp_fsincos0() to fp_fsincos7(), with the functions and
+ * the constants above them that they use, are the package's algorithms
+ * written in C, and the constants are the package's in another form.
+ * The package comes with this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -54,8 +54,7 @@
  *	under any patents or trademarks of Motorola, Inc.
  *
  * fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(), fp_fcosh(),
- * fp_ftanh(), fp_fatanh() and fp_fsincos0() to fp_fsincos7() are not
- * taken from the package.
+ * fp_ftanh() and fp_fatanh() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -462,58 +461,142 @@ struct fp_ext *fp_fatanh(struct fp_ext *dest, struct fp_ext *src)
 	return dest;
 }
 
+/*
+ * FSINCOS: the sine is the result of the instruction and the cosine
+ * goes to the register creg.  ssincos of the package computes both with
+ * polynomials in S alone, where FSIN and FCOS split theirs in two, so
+ * the last bit of a result may not be that of FSIN or FCOS.
+ */
+static struct fp_ext *fp_fsincos(struct fp_ext *dest, struct fp_ext *src,
+				 unsigned int creg)
+{
+	struct fp_ext *cdest = &FPDATA->fpreg[creg];
+	struct fp_ext r, s, a, b, t;
+	struct fpt_env env;
+	int n;
+
+	dprint(PINSTR, "fsincos\n");
+
+	/* the cosine has an entry in the table wherever the sine has one */
+	t = *src;
+	if (fpt_special(FPT_FSINCOS, &s, src)) {
+		fpt_special(FPT_FSINCOS_COS, &b, &t);
+		fpt_second(cdest, &b, NULL);
+		*dest = s;
+		return dest;
+	}
+
+	/* below 2^-40 the sine is the argument, as the program rounds it */
+	if (fpt_compact(src) < FP_TRIG_TINY) {
+		fpt_second(cdest, &fp_cos_small, NULL);
+		return fpt_computed(dest, src, NULL);
+	}
+
+	fpt_enter(&env);
+	if (!fp_trig_reduce(&r, &n, src)) {
+		fpt_operr(dest, &env);
+		fpt_second(cdest, dest, NULL);
+		return dest;
+	}
+
+	/*
+	 * With S = R * R, sin(R) - R is
+	 * R * S * (A1 + S * (A2 + S * (A3 + S * (A4 + S * (A5 + S * (A6 +
+	 * S * A7)))))) and cos(R) - 1 is
+	 * S * (B1 + S * (B2 + S * (B3 + S * (B4 + S * (B5 + S * (B6 + S *
+	 * (B7 + S * B8)))))))
+	 */
+	s = r;
+	fpt_mul(&s, &r);
+	a = fp_sin_a7;
+	b = fp_cos_b8;
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a6);
+	fpt_add(&b, &fp_cos_b7);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a5);
+	fpt_add(&b, &fp_cos_b6);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a4);
+	fpt_add(&b, &fp_cos_b5);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a3);
+	fpt_add(&b, &fp_cos_b4);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a2);
+	fpt_add(&b, &fp_cos_b3);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+	fpt_add(&a, &fp_sin_a1);
+	fpt_add(&b, &fp_cos_b2);
+	fpt_mul(&a, &s);
+	fpt_mul(&b, &s);
+
+	/*
+	 * The quadrant: for an even N the sine and the cosine of the
+	 * argument are sin(R) and cos(R), for an odd N they are cos(R)
+	 * and -sin(R), and bit 1 of N changes the sign of both.
+	 */
+	s.sign = (n & 2) != 0;
+	r.sign ^= ((n >> 1) ^ n) & 1;
+	fpt_mul(&a, &r);
+	fpt_add(&b, &fp_cos_b1);
+	fpt_mul(&b, &s);
+
+	/* the last operation of each: as the program rounds */
+	fpt_last_add(&a, &r, &env);
+	fpt_pow2(&t, 0);
+	t.sign = s.sign;
+	fpt_last_add(&b, &t, &env);
+	if (n & 1) {
+		fpt_second(cdest, &a, &env);
+		return fpt_computed(dest, &b, &env);
+	}
+	fpt_second(cdest, &b, &env);
+	return fpt_computed(dest, &a, &env);
+}
+
 struct fp_ext *fp_fsincos0(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos0\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 0);
 }
 
 struct fp_ext *fp_fsincos1(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos1\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 1);
 }
 
 struct fp_ext *fp_fsincos2(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos2\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 2);
 }
 
 struct fp_ext *fp_fsincos3(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos3\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 3);
 }
 
 struct fp_ext *fp_fsincos4(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos4\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 4);
 }
 
 struct fp_ext *fp_fsincos5(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos5\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 5);
 }
 
 struct fp_ext *fp_fsincos6(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos6\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 6);
 }
 
 struct fp_ext *fp_fsincos7(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsincos7\n");
-
-	return dest;
+	return fp_fsincos(dest, src, 7);
 }

@@ -80,6 +80,7 @@ fp_end:
 	.globl	fp_finalrounding_single, fp_finalrounding_single_fast
 	.globl	fp_finalrounding_double, fp_finalnorounding
 	.globl	fp_finalrounding, fp_finaltest, fp_final
+	.globl	fp_roundresult
 
 /*
  * First several conversion functions from a source operand
@@ -1361,6 +1362,22 @@ fp_finalnorounding:
 	jsr	fp_normalize_ext
 	fp_clr_sr FPSR_EXC_UNFL
 	jra	fp_finaltest
+
+	| fp_roundresult:
+	| round a result as fp_finalrounding does, to extended
+	| precision and then to the rounding precision, for a caller
+	| in C that stores a second result.  It sets exception bits
+	| and no condition codes.
+	| args:	%a0 (struct fp_ext *)
+
+fp_roundresult:
+	jsr	fp_normalize_ext
+	move.w	(FPD_PREC,FPDATA),%d0
+	subq.w	#1,%d0
+	jcs	1f
+	jeq	fp_normalize_single
+	jra	fp_normalize_double
+1:	rts
 
 	| fp_finaltest:
 	| set the emulated status register based on the outcome of an

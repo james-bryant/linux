@@ -25,6 +25,7 @@ enum fpt_insn {
 	FPT_FLOGNP1,
 	FPT_FSIN,
 	FPT_FSINCOS,
+	FPT_FSINCOS_COS,	/* the second result of FSINCOS */
 	FPT_FSINH,
 	FPT_FTAN,
 	FPT_FTANH,
@@ -64,6 +65,8 @@ void fpt_enter(struct fpt_env *env);
 struct fp_ext *fpt_computed(struct fp_ext *dest, const struct fp_ext *res,
 			    struct fpt_env *env);
 struct fp_ext *fpt_operr(struct fp_ext *dest, struct fpt_env *env);
+void fpt_second(struct fp_ext *reg, const struct fp_ext *res,
+		struct fpt_env *env);
 
 void fpt_add(struct fp_ext *dest, const struct fp_ext *src);
 void fpt_sub(struct fp_ext *dest, const struct fp_ext *src);
