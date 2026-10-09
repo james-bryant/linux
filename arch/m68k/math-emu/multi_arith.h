@@ -20,7 +20,8 @@
 
 #include "fp_emu.h"
 
-static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
+static __always_inline void __fp_denormalize(struct fp_ext *reg,
+					     unsigned int cnt)
 {
 	/*
 	 * bits already shifted out, e.g. by a multiply, are below the new
@@ -30,20 +31,25 @@ static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
 
 	reg->exp += cnt;
 
+	/*
+	 * A shift of a 32-bit value by 32 or more is undefined in C.  Where
+	 * the count of one can reach 32 it is made in two steps, each of
+	 * them below 32, which leaves zero as these expressions want it.
+	 */
 	switch (cnt) {
 	case 0 ... 8:
 		reg->lowmant = reg->mant.m32[1] << (8 - cnt);
 		reg->mant.m32[1] = (reg->mant.m32[1] >> cnt) |
-				   (reg->mant.m32[0] << (32 - cnt));
+				   (reg->mant.m32[0] << (8 - cnt) << 24);
 		reg->mant.m32[0] = reg->mant.m32[0] >> cnt;
 		break;
 	case 9 ... 32:
 		reg->lowmant = reg->mant.m32[1] >> (cnt - 8);
 		if (reg->mant.m32[1] << (40 - cnt))
 			reg->lowmant |= 1;
-		reg->mant.m32[1] = (reg->mant.m32[1] >> cnt) |
+		reg->mant.m32[1] = (reg->mant.m32[1] >> (cnt - 8) >> 8) |
 				   (reg->mant.m32[0] << (32 - cnt));
-		reg->mant.m32[0] = reg->mant.m32[0] >> cnt;
+		reg->mant.m32[0] = reg->mant.m32[0] >> (cnt - 8) >> 8;
 		break;
 	case 33 ... 39:
 		asm volatile ("bfextu %1{%2,#8},%0" : "=d" (reg->lowmant)
@@ -55,9 +61,9 @@ static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
 		break;
 	case 40 ... 71:
 		reg->lowmant = reg->mant.m32[0] >> (cnt - 40);
-		if ((reg->mant.m32[0] << (72 - cnt)) || reg->mant.m32[1])
+		if ((reg->mant.m32[0] << (71 - cnt) << 1) || reg->mant.m32[1])
 			reg->lowmant |= 1;
-		reg->mant.m32[1] = reg->mant.m32[0] >> (cnt - 32);
+		reg->mant.m32[1] = reg->mant.m32[0] >> (cnt - 40) >> 8;
 		reg->mant.m32[0] = 0;
 		break;
 	default:
@@ -69,17 +75,29 @@ static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
 	reg->lowmant |= sticky;
 }
 
+/*
+ * fp_fadd() aligns its operands with the inline one; the other callers
+ * need it only for a result that underflows and can share a copy.
+ */
+static inline void fp_denormalize(struct fp_ext *reg, unsigned int cnt)
+{
+	__fp_denormalize(reg, cnt);
+}
+
 static inline int fp_overnormalize(struct fp_ext *reg)
 {
 	int shift;
 
 	if (reg->mant.m32[0]) {
 		asm ("bfffo %1{#0,#32},%0" : "=d" (shift) : "dm" (reg->mant.m32[0]));
-		reg->mant.m32[0] = (reg->mant.m32[0] << shift) | (reg->mant.m32[1] >> (32 - shift));
+		/* in two steps: the count is 32 for a normalized number */
+		reg->mant.m32[0] = (reg->mant.m32[0] << shift) |
+				   (reg->mant.m32[1] >> (31 - shift) >> 1);
 		reg->mant.m32[1] = (reg->mant.m32[1] << shift);
 	} else {
 		asm ("bfffo %1{#0,#32},%0" : "=d" (shift) : "dm" (reg->mant.m32[1]));
-		reg->mant.m32[0] = (reg->mant.m32[1] << shift);
+		/* 32 for a mantissa of zero, which no caller passes */
+		reg->mant.m32[0] = shift < 32 ? reg->mant.m32[1] << shift : 0;
 		reg->mant.m32[1] = 0;
 		shift += 32;
 	}

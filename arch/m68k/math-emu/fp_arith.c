@@ -92,9 +92,9 @@ struct fp_ext *fp_fadd(struct fp_ext *dest, struct fp_ext *src)
 	dest->lowmant = src->lowmant = 0;
 
 	if ((diff = dest->exp - src->exp) > 0)
-		fp_denormalize(src, diff);
+		__fp_denormalize(src, diff);
 	else if ((diff = -diff) > 0)
-		fp_denormalize(dest, diff);
+		__fp_denormalize(dest, diff);
 
 	if (dest->sign == src->sign) {
 		if (fp_addmant(dest, src))
@@ -620,8 +620,9 @@ static void fp_roundint(struct fp_ext *dest, int mode)
 				return;
 			if (oldmant.m32[0] & (mask << 1))
 				break;
-			if (!(oldmant.m32[0] << (dest->exp - 0x3ffd)) &&
-					!oldmant.m32[1])
+			/* in two steps: the count reaches 32 at 0x401d */
+			if (!(oldmant.m32[0] << (dest->exp - 0x3ffe) << 1) &&
+			    !oldmant.m32[1])
 				return;
 			break;
 		case 0x401e:
@@ -638,7 +639,8 @@ static void fp_roundint(struct fp_ext *dest, int mode)
 				return;
 			if (oldmant.m32[1] & (mask << 1))
 				break;
-			if (!(oldmant.m32[1] << (dest->exp - 0x401d)))
+			/* and here at 0x403d */
+			if (!(oldmant.m32[1] << (dest->exp - 0x401e) << 1))
 				return;
 			break;
 		default:
@@ -659,14 +661,14 @@ static void fp_roundint(struct fp_ext *dest, int mode)
 		dest->mant.m64 = 1ULL << 63;
 		break;
 	case 0x3fff ... 0x401e:
-		mask = 1 << (0x401e - dest->exp);
+		mask = 1UL << (0x401e - dest->exp);
 		if (dest->mant.m32[0] += mask)
 			break;
 		dest->mant.m32[0] = 0x80000000;
 		dest->exp++;
 		break;
 	case 0x401f ... 0x403e:
-		mask = 1 << (0x403e - dest->exp);
+		mask = 1UL << (0x403e - dest->exp);
 		if (dest->mant.m32[1] += mask)
 			break;
 		if (dest->mant.m32[0] += 1)
