@@ -381,6 +381,15 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_NAN },
 		[FPT_N(FPT_INF)]	= { FPT_R_NAN },
 	},
+	/* a denormalized operand as for FETOXM1 */
+	[FPT_FSINH] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_INF | FPT_R_NEG },
+	},
 	[FPT_FTAN] = {
 		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
 		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },

@@ -18,11 +18,11 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan() and
- * fp_fsincos0() to fp_fsincos7(), with the functions and the constants
- * above them that they use, are the package's algorithms written in C,
- * and the constants are the package's in another form.  The package
- * comes with this notice (arch/m68k/fpsp040/README):
+ * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh()
+ * and fp_fsincos0() to fp_fsincos7(), with the functions and the
+ * constants above them that they use, are the package's algorithms
+ * written in C, and the constants are the package's in another form.
+ * The package comes with this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -54,8 +54,7 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsinh(), fp_fcosh(), fp_ftanh() and fp_fatanh() are not taken from
- * the package.
+ * fp_fcosh(), fp_ftanh() and fp_fatanh() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -713,13 +712,66 @@ struct fp_ext *fp_fatan(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &a, &env);
 }
 
+/*
+ * 16381 log 2 in two parts: T1 and T2 of ssinh.S and scosh.S, which
+ * have them in double precision as 0x40c62d38 0xd3d64634 and
+ * 0x3d6f90ae 0xb1e75cc7.
+ */
+static const struct fp_ext fp_hyp_t1 =
+	FPT_EXT(0, 0x400c, 0xb169c69e, 0xb231a000);
+static const struct fp_ext fp_hyp_t2 =
+	FPT_EXT(0, 0x3fd6, 0xfc85758f, 0x3ae63800);
+
+/*
+ * FSINH follows ssinh of Motorola's floating-point package for the
+ * 68040 (arch/m68k/fpsp040/ssinh.S; its notice is at the head of this
+ * file): with Z = e^|x| - 1,
+ *
+ *	sinh x = sign(x) * (Z + Z / (1 + Z)) / 2
+ *
+ * and from 16380 log 2 on, which is as far as the package takes e^|x|
+ * itself (it would overflow from 16384 log 2 on, before the result
+ * does), sign(x) * 2^16380 * e^(|x| - 16381 log 2).  The package states
+ * an error below 3 units in the last place.
+ */
 struct fp_ext *fp_fsinh(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fsinh\n");
+	unsigned int compact;
+	struct fpt_env env;
+	struct fp_ext y, z, r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fsinh\n");
 
-	return dest;
+	if (fpt_special(FPT_FSINH, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	compact = fpt_compact(src);
+	y = *src;
+	y.sign = 0;
+	if (compact > 0x400cb2b3) {
+		fpt_overflow(&r, src->sign, &env);
+	} else if (compact > 0x400cb167) {
+		fpt_sub(&y, &fp_hyp_t1);
+		fpt_sub(&y, &fp_hyp_t2);
+		fp_etox(&r, &y, NULL);
+		fpt_pow2(&z, 16380);
+		z.sign = src->sign;
+		fpt_last_mul(&r, &z, &env);
+	} else {
+		fp_etoxm1(&z, &y, NULL);
+		y = z;
+		fpt_pow2(&r, 0);
+		fpt_add(&y, &r);
+		r = z;
+		fpt_div(&r, &y);
+		fpt_add(&r, &z);
+		fpt_pow2(&z, -1);
+		z.sign = src->sign;
+		fpt_last_mul(&r, &z, &env);
+	}
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_fcosh(struct fp_ext *dest, struct fp_ext *src)
