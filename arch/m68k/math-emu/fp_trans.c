@@ -176,6 +176,18 @@ static const struct {
 	unsigned char exc;
 } fpt_table[FPT_INSNS][2 * FPT_CLASSES] = {
 	/*
+	 * The cosine of a denormalized number is 1 in every rounding mode
+	 * in the package (scosd), and inexact.
+	 */
+	[FPT_FCOS] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_P(FPT_DENORM)]	= { FPT_R_ONE, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_ONE, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	/*
 	 * The package (setoxd) adds a tiny term of the operand's sign to 1
 	 * for a denormalized operand, so that the rounding mode decides.
 	 */

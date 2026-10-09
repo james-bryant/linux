@@ -17,10 +17,10 @@
 
 /*
  * This file contains a modified version of parts of Motorola's
- * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * with the functions and the constants above them that they use, are the
- * package's algorithms written in C, and the constants are the package's
- * in another form.  The package comes with this notice
+ * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin()
+ * and fp_fcos(), with the functions and the constants above them that
+ * they use, are the package's algorithms written in C, and the constants
+ * are the package's in another form.  The package comes with this notice
  * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
@@ -53,9 +53,9 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(),
- * fp_fcosh(), fp_ftanh(), fp_fatanh() and fp_fsincos0() to fp_fsincos7()
- * are not taken from the package.
+ * fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(), fp_fcosh(),
+ * fp_ftanh(), fp_fatanh() and fp_fsincos0() to fp_fsincos7() are not
+ * taken from the package.
  */
 
 #include "fp_emu.h"
@@ -67,13 +67,15 @@
  * floating-point package for the 68040 (arch/m68k/fpsp040/ssin.S and
  * stan.S; its notice is at the head of this file) step by step, so that
  * they compute the same digits.  The package states an error below one
- * unit in the last place for the sine of an argument below 15 pi.  It
- * does not keep that bound, even against the sine of the argument as
- * its own pi/2 reduces it: results almost two units off were found.
+ * unit in the last place for the sine and the cosine of an argument
+ * below 15 pi.  It does not keep that bound, even against the function
+ * of the argument as its own pi/2 reduces it: results almost two units
+ * off were found.
  *
- * Pi/2 has 66 bits in the package.  The sine of an argument next to a
- * multiple of pi and that of a large argument are those of the argument
- * as these 66 bits reduce it, and no more accurate than that.
+ * Pi/2 has 66 bits in the package.  The sine and the cosine of an
+ * argument next to a multiple of pi/2 and those of a large argument
+ * are those of the argument as these 66 bits reduce it, and no more
+ * accurate than that.
  *
  * The constants are the package's.  It has most of them in single or
  * double precision, and they are the same numbers here:
@@ -353,13 +355,39 @@ struct fp_ext *fp_fsin(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * The cosine of an argument below 2^-40: 1 less a tiny term, so that
+ * the program's rounding mode decides.  This is what that subtraction
+ * leaves, unrounded: the number below 1 and more than half a unit of
+ * its last place.
+ */
+static const struct fp_ext fp_cos_small = {
+	.lowmant = 0xff,
+	.exp = 0x3ffe,
+	.mant.m32 = { 0xffffffff, 0xffffffff },
+};
+
 struct fp_ext *fp_fcos(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fcos\n");
+	struct fpt_env env;
+	struct fp_ext r;
+	int n;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fcos\n");
 
-	return dest;
+	if (fpt_special(FPT_FCOS, dest, src))
+		return dest;
+
+	if (fpt_compact(src) < FP_TRIG_TINY)
+		return fpt_computed(dest, &fp_cos_small, NULL);
+
+	/* the cosine is the sine a quarter turn on */
+	fpt_enter(&env);
+	if (!fp_trig_reduce(&r, &n, src))
+		return fpt_operr(dest, &env);
+	fp_sin_poly(&r, &r, n + 1, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_ftan(struct fp_ext *dest, struct fp_ext *src)
