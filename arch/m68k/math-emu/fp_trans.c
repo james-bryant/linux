@@ -114,6 +114,7 @@ enum {
 	FPT_R_ONE_DOWN,
 	FPT_R_INF,
 	FPT_R_NAN,
+	FPT_R_PIBY2,
 	FPT_R_NEG = 0x80	/* flag: the result with a minus sign */
 };
 
@@ -150,6 +151,12 @@ static const struct fp_ext fpt_results[] = {
 		.exp = 0x7fff,
 		.mant.m32 = { 0xffffffff, 0xffffffff },
 	},
+	/* pi/2, which goes on 0xc4c6628b... below the mantissa */
+	[FPT_R_PIBY2] = {
+		.lowmant = 0xc5,
+		.exp = 0x3fff,
+		.mant.m32 = { 0xc90fdaa2, 0x2168c234 },
+	},
 };
 
 /* the exception status byte of FPSR */
@@ -179,6 +186,23 @@ static const struct {
 	unsigned char result;
 	unsigned char exc;
 } fpt_table[FPT_INSNS][2 * FPT_CLASSES] = {
+	/*
+	 * The arc tangent of an infinity is pi/2 with its sign, rounded as
+	 * the program asked.  The manuals give the result as pi/2 and say
+	 * nothing of its rounding; the timing table of the User's Manual
+	 * has a longer time for it in single and double precision than in
+	 * extended, as for a constant from the ROM, which is rounded.  The
+	 * package returns its 64 bits unrounded (spi_2).
+	 */
+	[FPT_FATAN] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_PIBY2, FPT_INEX2 },
+		[FPT_N(FPT_INF)]	= { FPT_R_PIBY2 | FPT_R_NEG,
+					    FPT_INEX2 },
+	},
 	/*
 	 * The cosine of a denormalized number is 1 in every rounding mode
 	 * in the package (scosd), and inexact.

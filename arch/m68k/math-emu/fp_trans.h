@@ -43,11 +43,12 @@ enum fpt_insn {
 #define FPT_EXT(s, e, hi, lo)						\
 	{ .sign = (s), .exp = (e), .mant.m32 = { (hi), (lo) } }
 
-/* fp_tables.c: the tables of the package, two numbers an entry */
+/* fp_tables.c: the tables of the package */
 extern const struct fp_ext fpt_exptbl[64][2];
 extern const struct fp_ext fpt_exp2tbl[64][2];
 extern const struct fp_ext fpt_logtbl[64][2];
 extern const struct fp_ext fpt_pitbl[65][2];
+extern const struct fp_ext fpt_atantbl[128];
 
 /*
  * What fpt_enter() takes from the program, until the last operation of

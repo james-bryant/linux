@@ -18,8 +18,8 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * fp_fcos(), fp_ftan() and fp_fsincos0() to fp_fsincos7(), with the
- * functions and the constants above them that they use, are the
+ * fp_fcos(), fp_ftan(), fp_fatan() and fp_fsincos0() to fp_fsincos7(),
+ * with the functions and the constants above them that they use, are the
  * package's algorithms written in C, and the constants are the package's
  * in another form.  The package comes with this notice
  * (arch/m68k/fpsp040/README):
@@ -54,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(), fp_fcosh(), fp_ftanh()
- * and fp_fatanh() are not taken from the package.
+ * fp_fasin(), fp_facos(), fp_fsinh(), fp_fcosh(), fp_ftanh() and
+ * fp_fatanh() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -464,6 +464,179 @@ struct fp_ext *fp_ftan(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &p, &env);
 }
 
+/*
+ * The arc tangent follows satan of the package (satan.S) in the same
+ * way.  The package states an error below 2 units in the last place.
+ * It does not keep that bound: results more than 2 units off were
+ * found.
+ *
+ * The constants of satan.S, which has them in double precision:
+ *
+ *	A1	0xbfc2476f 0x4e1da28e	B1	0xbfd55555 0x55555555
+ *	A2	0x4002ac69 0x34a26db3	B2	0x3fc99999 0x99998fa9
+ *	A3	0xbff6687e 0x314987d8	B3	0xbfc24924 0x921872f9
+ *	C1	0xbfd55555 0x55555536	B4	0x3fbc71c6 0x46940220
+ *	C2	0x3fc99999 0x9996263e	B5	0xbfb744ee 0x7faf45db
+ *	C3	0xbfc24924 0x827107b8	B6	0x3fb34444 0x7f876989
+ *	C4	0x3fbc7187 0x962d1d7d
+ *	C5	0xbfb70bf3 0x98539e6a
+ */
+static const struct fp_ext fp_atan_a1 =
+	FPT_EXT(1, 0x3ffc, 0x923b7a70, 0xed147000);
+static const struct fp_ext fp_atan_a2 =
+	FPT_EXT(0, 0x4000, 0x956349a5, 0x136d9800);
+static const struct fp_ext fp_atan_a3 =
+	FPT_EXT(1, 0x3fff, 0xb343f18a, 0x4c3ec000);
+
+static const struct fp_ext fp_atan_b1 =
+	FPT_EXT(1, 0x3ffd, 0xaaaaaaaa, 0xaaaaa800);
+static const struct fp_ext fp_atan_b2 =
+	FPT_EXT(0, 0x3ffc, 0xcccccccc, 0xcc7d4800);
+static const struct fp_ext fp_atan_b3 =
+	FPT_EXT(1, 0x3ffc, 0x92492490, 0xc397c800);
+static const struct fp_ext fp_atan_b4 =
+	FPT_EXT(0, 0x3ffb, 0xe38e3234, 0xa0110000);
+static const struct fp_ext fp_atan_b5 =
+	FPT_EXT(1, 0x3ffb, 0xba2773fd, 0x7a2ed800);
+static const struct fp_ext fp_atan_b6 =
+	FPT_EXT(0, 0x3ffb, 0x9a2223fc, 0x3b4c4800);
+
+static const struct fp_ext fp_atan_c1 =
+	FPT_EXT(1, 0x3ffd, 0xaaaaaaaa, 0xaaa9b000);
+static const struct fp_ext fp_atan_c2 =
+	FPT_EXT(0, 0x3ffc, 0xcccccccc, 0xb131f000);
+static const struct fp_ext fp_atan_c3 =
+	FPT_EXT(1, 0x3ffc, 0x92492413, 0x883dc000);
+static const struct fp_ext fp_atan_c4 =
+	FPT_EXT(0, 0x3ffb, 0xe38c3cb1, 0x68ebe800);
+static const struct fp_ext fp_atan_c5 =
+	FPT_EXT(1, 0x3ffb, 0xb85f9cc2, 0x9cf35000);
+
+/* pi/2 in 64 bits, and the smallest normalized number */
+static const struct fp_ext fp_atan_piby2 =
+	FPT_EXT(0, 0x3fff, 0xc90fdaa2, 0x2168c235);
+static const struct fp_ext fp_atan_tiny =
+	FPT_EXT(0, 0x0001, 0x80000000, 0x00000000);
+
+/*
+ * The arc tangent of a normalized number as the sum of two terms: the
+ * sum is the last operation of satan, and it is left to the caller,
+ * who knows how it is to be rounded.  x is neither res nor last.
+ */
+static void fp_atan_terms(struct fp_ext *res, struct fp_ext *last,
+			  const struct fp_ext *x)
+{
+	unsigned int compact = fpt_compact(x);
+	struct fp_ext u, y, z, p, q;
+
+	if (compact >= 0x3ffb8000 && compact <= 0x4002ffff) {
+		/*
+		 * From 1/16 to 16: with F the first five bits of X and a
+		 * sixth that is set, atan(X) = atan(F) + atan(U) for
+		 * U = (X - F) / (1 + X * F), atan(F) from the table of
+		 * eight binades of sixteen F each
+		 */
+		q = *x;
+		q.mant.m32[0] = (q.mant.m32[0] & 0xf8000000) | 0x04000000;
+		q.mant.m32[1] = 0;
+		u = *x;
+		y = *x;
+		fpt_mul(&y, &q);
+		fpt_sub(&u, &q);
+		fpt_pow2(&p, 0);
+		fpt_add(&y, &p);
+		fpt_div(&u, &y);
+		*last = fpt_atantbl[(x->exp - 0x3ffb) << 4 |
+				    (x->mant.m32[0] >> 27 & 15)];
+		last->sign = x->sign;
+
+		/*
+		 * With V = U * U, atan(U) is
+		 * U + A1 * U * V * (A2 + V * (A3 + V))
+		 */
+		y = u;
+		fpt_mul(&y, &u);
+		p = fp_atan_a3;
+		fpt_add(&p, &y);
+		fpt_mul(&p, &y);
+		fpt_mul(&y, &u);
+		fpt_add(&p, &fp_atan_a2);
+		fpt_mul(&y, &fp_atan_a1);
+		fpt_mul(&y, &p);
+		fpt_add(&u, &y);
+		*res = u;
+	} else if (compact < FP_TRIG_TINY) {
+		/* below 2^-40 the arc tangent is the argument: add nothing */
+		*res = *x;
+		last->lowmant = 0;
+		last->sign = x->sign;
+		last->exp = 0;
+		last->mant.m64 = 0;
+	} else if (compact < 0x3ffb8000) {
+		/*
+		 * Below 1/16: with Y = X * X and Z = Y * Y, atan(X) is
+		 * X + X * Y * ([B1 + Z * (B3 + Z * B5)] +
+		 *		[Y * (B2 + Z * (B4 + Z * B6))])
+		 */
+		y = *x;
+		fpt_mul(&y, x);
+		z = y;
+		fpt_mul(&z, &y);
+		p = fp_atan_b6;
+		q = fp_atan_b5;
+		fpt_mul(&p, &z);
+		fpt_mul(&q, &z);
+		fpt_add(&p, &fp_atan_b4);
+		fpt_add(&q, &fp_atan_b3);
+		fpt_mul(&p, &z);
+		fpt_mul(&z, &q);
+		fpt_add(&p, &fp_atan_b2);
+		fpt_add(&z, &fp_atan_b1);
+		fpt_mul(&p, &y);
+		fpt_mul(&y, x);
+		fpt_add(&z, &p);
+		fpt_mul(&y, &z);
+		*res = y;
+		*last = *x;
+	} else if (compact <= 0x40638000) {
+		/*
+		 * From 16 on: atan(X) = sign(X) * pi/2 + atan(X') for
+		 * X' = -1 / X.  With Y = X' * X' and Z = Y * Y, atan(X') is
+		 * X' + X' * Y * ([C1 + Z * (C3 + Z * C5)] +
+		 *		  [Y * (C2 + Z * C4)])
+		 */
+		fpt_pow2(&u, 0);
+		u.sign = 1;
+		fpt_div(&u, x);
+		y = u;
+		fpt_mul(&y, &u);
+		z = y;
+		fpt_mul(&z, &y);
+		p = fp_atan_c5;
+		q = fp_atan_c4;
+		fpt_mul(&p, &z);
+		fpt_mul(&q, &z);
+		fpt_add(&p, &fp_atan_c3);
+		fpt_add(&q, &fp_atan_c2);
+		fpt_mul(&z, &p);
+		fpt_mul(&q, &y);
+		fpt_add(&z, &fp_atan_c1);
+		fpt_mul(&y, &u);
+		fpt_add(&z, &q);
+		fpt_mul(&y, &z);
+		fpt_add(&y, &u);
+		*res = y;
+		*last = fp_atan_piby2;
+		last->sign = x->sign;
+	} else {
+		/* beyond 2^100: sign(X) * (pi/2 less a tiny term) */
+		*res = fp_atan_piby2;
+		res->sign = x->sign;
+		*last = fp_atan_tiny;
+		last->sign = !x->sign;
+	}
+}
+
 struct fp_ext *fp_fasin(struct fp_ext *dest, struct fp_ext *src)
 {
 	uprint("fasin\n");
@@ -484,11 +657,19 @@ struct fp_ext *fp_facos(struct fp_ext *dest, struct fp_ext *src)
 
 struct fp_ext *fp_fatan(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fatan\n");
+	struct fp_ext a, b;
+	struct fpt_env env;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fatan\n");
 
-	return dest;
+	if (fpt_special(FPT_FATAN, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	fp_atan_terms(&a, &b, src);
+	fpt_last_add(&a, &b, &env);
+
+	return fpt_computed(dest, &a, &env);
 }
 
 struct fp_ext *fp_fsinh(struct fp_ext *dest, struct fp_ext *src)
