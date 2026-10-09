@@ -200,6 +200,29 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_INF },
 		[FPT_N(FPT_INF)]	= { FPT_R_ONE | FPT_R_NEG },
 	},
+	/* the logarithms to base 10 and 2 as FLOGN */
+	[FPT_FLOG10] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_LT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_ZERO },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	[FPT_FLOG2] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_LT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_ZERO },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 	/*
 	 * The logarithm of a zero of either sign is minus infinity with DZ,
 	 * and that of a negative number is an operand error.  The logarithm

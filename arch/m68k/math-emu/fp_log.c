@@ -18,11 +18,11 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox(),
- * fp_fetoxm1(), fp_ftwotox(), fp_ftentox(), fp_flogn() and fp_flognp1(),
- * with the functions and the constants above them that they use, are the
- * package's algorithms written in C, and the constants are the package's
- * in another form.  The package comes with this notice
- * (arch/m68k/fpsp040/README):
+ * fp_fetoxm1(), fp_ftwotox(), fp_ftentox(), fp_flogn(), fp_flognp1(),
+ * fp_flog10() and fp_flog2(), with the functions and the constants above
+ * them that they use, are the package's algorithms written in C, and the
+ * constants are the package's in another form.  The package comes with
+ * this notice (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -54,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsqrt(), fp_flog10(), fp_flog2(), fp_fgetexp() and fp_fgetman() are
- * not taken from the package.
+ * fp_fsqrt(), fp_fgetexp() and fp_fgetman() are not taken from the
+ * package.
  */
 
 #include "fp_emu.h"
@@ -969,22 +969,50 @@ struct fp_ext *fp_flognp1(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/* 1 / log 10 and 1 / log 2 */
+static const struct fp_ext fp_log_inv_l10 =
+	FPT_EXT(0, 0x3ffd, 0xde5bd8a9, 0x37287195);
+static const struct fp_ext fp_log_inv_l2 =
+	FPT_EXT(0, 0x3fff, 0xb8aa3b29, 0x5c17f0bc);
+
 struct fp_ext *fp_flog10(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("flog10\n");
+	struct fpt_env env;
+	struct fp_ext r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "flog10\n");
 
-	return dest;
+	if (fpt_special(FPT_FLOG10, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	fp_logn(&r, src, NULL);
+	fpt_last_mul(&r, &fp_log_inv_l10, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_flog2(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("flog2\n");
+	struct fpt_env env;
+	struct fp_ext r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "flog2\n");
 
-	return dest;
+	if (fpt_special(FPT_FLOG2, dest, src))
+		return dest;
+
+	/* the logarithm of a normalized power of two is its exponent */
+	if (src->mant.m32[0] == 0x80000000 && !src->mant.m32[1]) {
+		fpt_from_int(&r, src->exp - 0x3fff);
+		return fpt_computed(dest, &r, NULL);
+	}
+
+	fpt_enter(&env);
+	fp_logn(&r, src, NULL);
+	fpt_last_mul(&r, &fp_log_inv_l2, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_fgetexp(struct fp_ext *dest, struct fp_ext *src)
