@@ -131,17 +131,6 @@ extern unsigned int fp_debugprint;
 #define dprint(bit, fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
 #endif
 
-#define uprint(str) ({					\
-	static int __count = 3;				\
-							\
-	if (__count > 0) {				\
-		pr_err("You just hit an unimplemented "	\
-		       "fpu instruction (%s)\n", str);	\
-		pr_err("Please report this to ....\n");	\
-		__count--;				\
-	}						\
-})
-
 #define FPDATA		((struct fp_data *)current->thread.fp)
 
 #else	/* __ASSEMBLER__ */
