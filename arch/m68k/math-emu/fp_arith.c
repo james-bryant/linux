@@ -506,8 +506,19 @@ struct fp_ext *fp_fsgldiv(struct fp_ext *dest, struct fp_ext *src)
 	if ((long)src->mant.m32[0] >= 0)
 		exp += fp_overnormalize(src);
 
+	/*
+	 * truncate both mantissas to single precision: the top 24 bits of
+	 * the high longword, nothing of the low one.  The low longword must
+	 * go too, not only be left out of the divide: fp_sub64() below
+	 * subtracts the whole 64-bit mantissas, and a non-zero low longword
+	 * would borrow into the 24-bit high longwords and give a quotient
+	 * that is wrong, not merely inaccurate.  PRM 5-112: "the extraneous
+	 * mantissa bits are truncated prior to the division".
+	 */
 	dest->mant.m32[0] &= 0xffffff00;
+	dest->mant.m32[1] = 0;
 	src->mant.m32[0] &= 0xffffff00;
+	src->mant.m32[1] = 0;
 
 	/* do the 32-bit divide */
 	if (dest->mant.m32[0] >= src->mant.m32[0]) {
