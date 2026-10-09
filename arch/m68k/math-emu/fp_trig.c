@@ -19,10 +19,10 @@
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
  * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(),
- * fp_fcosh(), fp_ftanh() and fp_fsincos0() to fp_fsincos7(), with the
- * functions and the constants above them that they use, are the
- * package's algorithms written in C, and the constants are the package's
- * in another form.  The package comes with this notice
+ * fp_fcosh(), fp_ftanh(), fp_fatanh() and fp_fsincos0() to
+ * fp_fsincos7(), with the functions and the constants above them that
+ * they use, are the package's algorithms written in C, and the constants
+ * are the package's in another form.  The package comes with this notice
  * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
@@ -54,8 +54,6 @@
  *	and that such modified versions are clearly identified as such.
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
- *
- * fp_fatanh() is not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -876,13 +874,41 @@ struct fp_ext *fp_ftanh(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * FATANH follows satanh of the package (arch/m68k/fpsp040/satanh.S):
+ * with Z = 2 |x| / (1 - |x|),
+ *
+ *	atanh x = sign(x) * log(1 + Z) / 2
+ *
+ * The package states an error below 3 units in the last place.  It does
+ * not keep that bound where the logarithm is small and comes from the
+ * table: see fp_log.c.  Results more than six units off were found.
+ */
 struct fp_ext *fp_fatanh(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fatanh\n");
+	struct fpt_env env;
+	struct fp_ext y, z, r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fatanh\n");
 
-	return dest;
+	if (fpt_special(FPT_FATANH, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	y = *src;
+	y.sign = 0;
+	z = y;
+	z.sign = 1;
+	fpt_add(&y, &y);
+	fpt_pow2(&r, 0);
+	fpt_add(&z, &r);
+	fpt_div(&y, &z);
+	fp_lognp1(&r, &y, NULL);
+	fpt_pow2(&z, -1);
+	z.sign = src->sign;
+	fpt_last_mul(&r, &z, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 /*

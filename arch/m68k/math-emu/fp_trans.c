@@ -256,6 +256,24 @@ static const struct {
 					    FPT_INEX2 },
 	},
 	/*
+	 * A denormalized operand as for FETOXM1.  For 1 and -1 the manuals
+	 * have DZ and an infinity of the other sign than the operand's.
+	 * That is not what the function does, and the package (satanh)
+	 * returns the infinity of the operand's sign.
+	 */
+	[FPT_FATANH] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_INF, FPT_DZ },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_P(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
+	/*
 	 * The cosine of a denormalized number is 1 in every rounding mode
 	 * in the package (scosd), and inexact.
 	 */
