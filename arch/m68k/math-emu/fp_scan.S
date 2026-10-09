@@ -237,7 +237,16 @@ fp_immediate:
 #endif
 	lea	(%a0,%d0.w),%a1
 	fp_put_pc %a1
-|	jra	fp_fetchsource
+	| A byte immediate is the low-order byte of its extension word.
+	| Fetch the word, as the processor does, so that a fault is the
+	| word's, and take the byte from it; the other formats start at
+	| the word itself.
+	cmp.w	#6,%d1
+	jne	fp_fetchsource
+	move.l	%a0,%a1
+	lea	(FPD_TEMPFP1,FPDATA),%a0
+	getuser.w (%a1),%d0,fp_err_ua1,%a1
+	jra	fp_data_byte
 
 fp_fetchsource:
 	move.l	%a0,%a1
