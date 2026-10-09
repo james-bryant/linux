@@ -200,6 +200,23 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_INF },
 		[FPT_N(FPT_INF)]	= { FPT_R_ONE | FPT_R_NEG },
 	},
+	/*
+	 * The logarithm of a zero of either sign is minus infinity with DZ,
+	 * and that of a negative number is an operand error.  The logarithm
+	 * of 1 is +0 and is exact: the package (sslogn, sslog10, sslog2)
+	 * does not compute it.
+	 */
+	[FPT_FLOGN] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_INF | FPT_R_NEG, FPT_DZ },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_LT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_EQ1)]	= { FPT_R_ZERO },
+		[FPT_N(FPT_EQ1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_GT1)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 	/* a denormalized operand as for FETOXM1 */
 	[FPT_FSIN] = {
 		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },

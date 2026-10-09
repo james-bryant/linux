@@ -18,10 +18,11 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fetox(),
- * fp_fetoxm1(), fp_ftwotox() and fp_ftentox(), with the functions and
- * the constants above them that they use, are the package's algorithms
- * written in C, and the constants are the package's in another form.
- * The package comes with this notice (arch/m68k/fpsp040/README):
+ * fp_fetoxm1(), fp_ftwotox(), fp_ftentox() and fp_flogn(), with the
+ * functions and the constants above them that they use, are the
+ * package's algorithms written in C, and the constants are the package's
+ * in another form.  The package comes with this notice
+ * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -53,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fsqrt(), fp_flogn(), fp_flognp1(), fp_flog10(), fp_flog2(),
- * fp_fgetexp() and fp_fgetman() are not taken from the package.
+ * fp_fsqrt(), fp_flognp1(), fp_flog10(), fp_flog2(), fp_fgetexp() and
+ * fp_fgetman() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -706,13 +707,186 @@ struct fp_ext *fp_ftentox(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * The logarithms follow slogn and slog2 of the package
+ * (arch/m68k/fpsp040/slogn.S and slog2.S).  For x = 2^K * Y with Y from
+ * 1 to 2, and F the first seven bits of Y with a one after them,
+ *
+ *	log x = K log 2 + log F + log(1 + U),	U = (Y - F) / F
+ *
+ * where 1/F and log F come from a table and log(1 + U) from a polynomial
+ * in U.  Next to 1 it is a polynomial in U = 2 (x - 1) / (x + 1)
+ * instead.  The package states an error below 2 units in the last place
+ * for the natural logarithms and below 1.7 for those to base 10 and 2.
+ * It does not keep these bounds: the sum from the table is right to
+ * about a unit in the last place of 1/2 however small it is, and just
+ * outside 15/16 to 17/16, where the other formula ends, the logarithm
+ * is as small as 0.06.  Results more than ten units off were found
+ * there, and more than twenty for the logarithm to base 10.
+ *
+ * The constants of double precision in the package's form:
+ *
+ *	A1	0xbfe00000 0x00000008	B1	0x3fb55555 0x55555555
+ *	A2	0x3fd55555 0x555555a4	B2	0x3f899999 0x999995ec
+ *	A3	0xbfcfffff 0xff6f7e97	B3	0x3f624924 0x928bccff
+ *	A4	0x3fc99999 0x987d8730	B4	0x3f3c71c2 0xfe80c7e0
+ *	A5	0xbfc555b5 0x848cb7db	B5	0x3f175496 0xadd7dad6
+ *	A6	0x3fc2499a 0xb5e4040b
+ */
+static const struct fp_ext fp_log_a1 =
+	FPT_EXT(1, 0x3ffe, 0x80000000, 0x00004000);
+static const struct fp_ext fp_log_a2 =
+	FPT_EXT(0, 0x3ffd, 0xaaaaaaaa, 0xaaad2000);
+static const struct fp_ext fp_log_a3 =
+	FPT_EXT(1, 0x3ffc, 0xfffffffb, 0x7bf4b800);
+static const struct fp_ext fp_log_a4 =
+	FPT_EXT(0, 0x3ffc, 0xccccccc3, 0xec398000);
+static const struct fp_ext fp_log_a5 =
+	FPT_EXT(1, 0x3ffc, 0xaaadac24, 0x65bed800);
+static const struct fp_ext fp_log_a6 =
+	FPT_EXT(0, 0x3ffc, 0x924cd5af, 0x20205800);
+
+static const struct fp_ext fp_log_b1 =
+	FPT_EXT(0, 0x3ffb, 0xaaaaaaaa, 0xaaaaa800);
+static const struct fp_ext fp_log_b2 =
+	FPT_EXT(0, 0x3ff8, 0xcccccccc, 0xccaf6000);
+static const struct fp_ext fp_log_b3 =
+	FPT_EXT(0, 0x3ff6, 0x92492494, 0x5e67f800);
+static const struct fp_ext fp_log_b4 =
+	FPT_EXT(0, 0x3ff3, 0xe38e17f4, 0x063f0000);
+static const struct fp_ext fp_log_b5 =
+	FPT_EXT(0, 0x3ff1, 0xbaa4b56e, 0xbed6b000);
+
+/*
+ * K log 2 + log F + log(1 + U) from Y - F, which u is, and the place j
+ * of F in the table.  With V = U * U, log(1 + U) is
+ * [U + V * (A1 + V * (A3 + V * A5))] + [U * V * (A2 + V * (A4 + V * A6))]
+ */
+static void fp_log_table(struct fp_ext *u, int k, unsigned int j,
+			 struct fpt_env *env)
+{
+	struct fp_ext v, p, q, klog2;
+
+	fpt_mul(u, &fpt_logtbl[j][0]);
+	fpt_from_int(&klog2, k);
+	fpt_mul(&klog2, &fp_log2);
+	v = *u;
+	fpt_mul(&v, u);
+	p = v;
+	q = v;
+	fpt_mul(&p, &fp_log_a6);
+	fpt_mul(&q, &fp_log_a5);
+	fpt_add(&p, &fp_log_a4);
+	fpt_add(&q, &fp_log_a3);
+	fpt_mul(&p, &v);
+	fpt_mul(&q, &v);
+	fpt_add(&p, &fp_log_a2);
+	fpt_add(&q, &fp_log_a1);
+	fpt_mul(&p, &v);
+	fpt_mul(&q, &v);
+	fpt_mul(&p, u);
+	fpt_add(u, &q);
+	fpt_add(&p, &fpt_logtbl[j][1]);
+	fpt_add(u, &p);
+
+	fpt_last_add(u, &klog2, env);
+}
+
+/*
+ * log x for a normalized positive x, which y is, away from 1: K is its
+ * exponent, or what the caller knows it to be.
+ */
+static void fp_log_main(struct fp_ext *y, int k, struct fpt_env *env)
+{
+	struct fp_ext f;
+
+	y->exp = 0x3fff;
+	f = (struct fp_ext)FPT_EXT(0, 0x3fff,
+		(y->mant.m32[0] & 0xfe000000) | 0x01000000, 0);
+	fpt_sub(y, &f);
+	fp_log_table(y, k, f.mant.m32[0] >> 25 & 63, env);
+}
+
+/*
+ * log((2 + U) / (2 - U)) for U = num / den, into num.  With V = U * U
+ * and W = V * V it is
+ * U + U * V * ([B1 + W * (B3 + W * B5)] + [V * (B2 + W * B4)])
+ */
+static void fp_log_near1(struct fp_ext *num, const struct fp_ext *den,
+			 struct fpt_env *env)
+{
+	struct fp_ext u, v, w, a, b;
+
+	fpt_div(num, den);
+	u = *num;
+	v = u;
+	fpt_mul(&v, &u);
+	w = v;
+	fpt_mul(&w, &v);
+	a = fp_log_b5;
+	b = fp_log_b4;
+	fpt_mul(&a, &w);
+	fpt_mul(&b, &w);
+	fpt_add(&a, &fp_log_b3);
+	fpt_add(&b, &fp_log_b2);
+	fpt_mul(&w, &a);
+	fpt_mul(&b, &v);
+	fpt_add(&w, &fp_log_b1);
+	fpt_mul(&v, &u);
+	fpt_add(&w, &b);
+	fpt_mul(&v, &w);
+
+	fpt_last_add(&v, &u, env);
+	*num = v;
+}
+
+/*
+ * log x for a positive number, normalized or denormalized, that is not
+ * 1.  With env the last operation is rounded as the program asked,
+ * without env to nearest: see fpt_last_add().
+ */
+static void fp_logn(struct fp_ext *res, const struct fp_ext *x,
+		    struct fpt_env *env)
+{
+	struct fp_ext one, den;
+	unsigned int compact;
+	int k;
+
+	*res = *x;
+	k = x->exp - 0x3fff;
+	/* a denormalized number has a lower exponent than its field says */
+	if ((long)res->mant.m32[0] >= 0)
+		k -= fp_overnormalize(res);
+
+	/* from about 15/16 to 17/16: U = 2 (x - 1) / (x + 1) */
+	compact = fpt_compact(res);
+	if (compact >= 0x3ffef07d && compact <= 0x3fff8841) {
+		fpt_pow2(&one, 0);
+		fpt_sub(res, &one);
+		den = *x;
+		fpt_add(&den, &one);
+		fpt_add(res, res);
+		fp_log_near1(res, &den, env);
+		return;
+	}
+
+	fp_log_main(res, k, env);
+}
+
 struct fp_ext *fp_flogn(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("flogn\n");
+	struct fpt_env env;
+	struct fp_ext r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "flogn\n");
 
-	return dest;
+	if (fpt_special(FPT_FLOGN, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	fp_logn(&r, src, &env);
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_flognp1(struct fp_ext *dest, struct fp_ext *src)
