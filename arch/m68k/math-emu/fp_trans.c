@@ -268,6 +268,18 @@ static const struct {
 		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
 	},
 	/*
+	 * The package (scoshd) adds a tiny term to 1 for a denormalized
+	 * operand of either sign.
+	 */
+	[FPT_FCOSH] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_N(FPT_ZERO)]	= { FPT_R_ONE },
+		[FPT_P(FPT_DENORM)]	= { FPT_R_ONE_UP, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_R_ONE_UP, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_INF },
+		[FPT_N(FPT_INF)]	= { FPT_R_INF },
+	},
+	/*
 	 * The package (setoxd) adds a tiny term of the operand's sign to 1
 	 * for a denormalized operand, so that the rounding mode decides.
 	 */

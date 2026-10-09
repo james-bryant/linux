@@ -18,9 +18,9 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh()
- * and fp_fsincos0() to fp_fsincos7(), with the functions and the
- * constants above them that they use, are the package's algorithms
+ * fp_fcos(), fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(),
+ * fp_fcosh() and fp_fsincos0() to fp_fsincos7(), with the functions and
+ * the constants above them that they use, are the package's algorithms
  * written in C, and the constants are the package's in another form.
  * The package comes with this notice (arch/m68k/fpsp040/README):
  *
@@ -54,7 +54,7 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_fcosh(), fp_ftanh() and fp_fatanh() are not taken from the package.
+ * fp_ftanh() and fp_fatanh() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -774,13 +774,48 @@ struct fp_ext *fp_fsinh(struct fp_ext *dest, struct fp_ext *src)
 	return fpt_computed(dest, &r, &env);
 }
 
+/*
+ * FCOSH follows scosh of the package (arch/m68k/fpsp040/scosh.S): with
+ * Z = e^|x|,
+ *
+ *	cosh x = Z / 2 + (1 / 4) / (Z / 2)
+ *
+ * and from 16380 log 2 on 2^16380 * e^(|x| - 16381 log 2).  The package
+ * states an error below 3 units in the last place.
+ */
 struct fp_ext *fp_fcosh(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("fcosh\n");
+	unsigned int compact;
+	struct fpt_env env;
+	struct fp_ext y, z, r;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "fcosh\n");
 
-	return dest;
+	if (fpt_special(FPT_FCOSH, dest, src))
+		return dest;
+
+	fpt_enter(&env);
+	compact = fpt_compact(src);
+	y = *src;
+	y.sign = 0;
+	if (compact > 0x400cb2b3) {
+		fpt_overflow(&r, 0, &env);
+	} else if (compact > 0x400cb167) {
+		fpt_sub(&y, &fp_hyp_t1);
+		fpt_sub(&y, &fp_hyp_t2);
+		fp_etox(&r, &y, NULL);
+		fpt_pow2(&z, 16380);
+		fpt_last_mul(&r, &z, &env);
+	} else {
+		fp_etox(&r, &y, NULL);
+		fpt_pow2(&z, -1);
+		fpt_mul(&r, &z);
+		fpt_pow2(&z, -2);
+		fpt_div(&z, &r);
+		fpt_last_add(&r, &z, &env);
+	}
+
+	return fpt_computed(dest, &r, &env);
 }
 
 struct fp_ext *fp_ftanh(struct fp_ext *dest, struct fp_ext *src)
