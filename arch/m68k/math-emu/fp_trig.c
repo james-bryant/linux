@@ -18,10 +18,11 @@
 /*
  * This file contains a modified version of parts of Motorola's
  * floating-point package for the 68040 (arch/m68k/fpsp040): fp_fsin(),
- * fp_fcos() and fp_fsincos0() to fp_fsincos7(), with the functions and
- * the constants above them that they use, are the package's algorithms
- * written in C, and the constants are the package's in another form.
- * The package comes with this notice (arch/m68k/fpsp040/README):
+ * fp_fcos(), fp_ftan() and fp_fsincos0() to fp_fsincos7(), with the
+ * functions and the constants above them that they use, are the
+ * package's algorithms written in C, and the constants are the package's
+ * in another form.  The package comes with this notice
+ * (arch/m68k/fpsp040/README):
  *
  *	MOTOROLA MICROPROCESSOR & MEMORY TECHNOLOGY GROUP
  *	M68000 Hi-Performance Microprocessor Division
@@ -53,8 +54,8 @@
  *	No licenses are granted by implication, estoppel or otherwise
  *	under any patents or trademarks of Motorola, Inc.
  *
- * fp_ftan(), fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(), fp_fcosh(),
- * fp_ftanh() and fp_fatanh() are not taken from the package.
+ * fp_fasin(), fp_facos(), fp_fatan(), fp_fsinh(), fp_fcosh(), fp_ftanh()
+ * and fp_fatanh() are not taken from the package.
  */
 
 #include "fp_emu.h"
@@ -67,14 +68,15 @@
  * stan.S; its notice is at the head of this file) step by step, so that
  * they compute the same digits.  The package states an error below one
  * unit in the last place for the sine and the cosine of an argument
- * below 15 pi.  It does not keep that bound, even against the function
- * of the argument as its own pi/2 reduces it: results almost two units
- * off were found.
+ * below 15 pi, and below three units for the tangent.  It does not
+ * keep these bounds, even against the function of the argument as its
+ * own pi/2 reduces it: results almost two units off were found for the
+ * sine and the cosine, and three and a half for the tangent.
  *
- * Pi/2 has 66 bits in the package.  The sine and the cosine of an
- * argument next to a multiple of pi/2 and those of a large argument
- * are those of the argument as these 66 bits reduce it, and no more
- * accurate than that.
+ * Pi/2 has 66 bits in the package.  The sine, the cosine and the
+ * tangent of an argument next to a multiple of pi/2 and those of a
+ * large argument are those of the argument as these 66 bits reduce it,
+ * and no more accurate than that.
  *
  * The constants are the package's.  It has most of them in single or
  * double precision, and they are the same numbers here:
@@ -86,6 +88,8 @@
  *	A6	0x3de61209 0x7aae8da1	B6	0x3e21eed9 0x0612c972
  *	A7	0xbd6aaa77 0xccc994f5	B7	0xbda9396f 0x9f45ac19
  *					B8	0x3d2ac4d0 0xd6011ee3
+ *	P3	0xbef2baa5 0xa8924f04	Q3	0xbf346f59 0xb39ba65f
+ *					Q4	0x3ea0b759 0xf50f8688
  */
 static const struct fp_ext fp_trig_twobypi =
 	FPT_EXT(0, 0x3ffe, 0xa2f9836e, 0x4e441800);
@@ -121,6 +125,21 @@ static const struct fp_ext fp_cos_b7 =
 	FPT_EXT(1, 0x3fda, 0xc9cb7cfa, 0x2d60c800);
 static const struct fp_ext fp_cos_b8 =
 	FPT_EXT(0, 0x3fd2, 0xd62686b0, 0x08f71800);
+
+static const struct fp_ext fp_tan_p1 =
+	FPT_EXT(1, 0x3ffc, 0x8895a6c5, 0xfb423bca);
+static const struct fp_ext fp_tan_p2 =
+	FPT_EXT(0, 0x3ff6, 0xe073d3fc, 0x199c4a00);
+static const struct fp_ext fp_tan_p3 =
+	FPT_EXT(1, 0x3fef, 0x95d52d44, 0x92782000);
+static const struct fp_ext fp_tan_q1 =
+	FPT_EXT(1, 0x3ffd, 0xeef57e0d, 0xa84bc8ce);
+static const struct fp_ext fp_tan_q2 =
+	FPT_EXT(0, 0x3ff9, 0xd23cd684, 0x15d95fa1);
+static const struct fp_ext fp_tan_q3 =
+	FPT_EXT(1, 0x3ff3, 0xa37acd9c, 0xdd32f800);
+static const struct fp_ext fp_tan_q4 =
+	FPT_EXT(0, 0x3fea, 0x85bacfa8, 0x7c344000);
 
 /*
  * 2^-40 in the form of fpt_compact().  Below it ssin, stan, satan and
@@ -391,11 +410,58 @@ struct fp_ext *fp_fcos(struct fp_ext *dest, struct fp_ext *src)
 
 struct fp_ext *fp_ftan(struct fp_ext *dest, struct fp_ext *src)
 {
-	uprint("ftan\n");
+	struct fp_ext r, s, p, q;
+	struct fpt_env env;
+	int n;
 
-	fp_monadic_check(dest, src);
+	dprint(PINSTR, "ftan\n");
 
-	return dest;
+	if (fpt_special(FPT_FTAN, dest, src))
+		return dest;
+
+	/* below 2^-40 the tangent is the argument, as the program rounds it */
+	if (fpt_compact(src) < FP_TRIG_TINY)
+		return fpt_computed(dest, src, NULL);
+
+	fpt_enter(&env);
+	if (!fp_trig_reduce(&r, &n, src))
+		return fpt_operr(dest, &env);
+
+	/*
+	 * With S = R * R, tan(R) is U / V with
+	 * U = R + R * S * (P1 + S * (P2 + S * P3)) and
+	 * V = 1 + S * (Q1 + S * (Q2 + S * (Q3 + S * Q4)))
+	 */
+	s = r;
+	fpt_mul(&s, &r);
+	q = fp_tan_q4;
+	p = fp_tan_p3;
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_tan_q3);
+	fpt_add(&p, &fp_tan_p2);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_tan_q2);
+	fpt_add(&p, &fp_tan_p1);
+	fpt_mul(&q, &s);
+	fpt_mul(&p, &s);
+	fpt_add(&q, &fp_tan_q1);
+	fpt_mul(&p, &r);
+	fpt_mul(&q, &s);
+	fpt_add(&p, &r);
+	fpt_pow2(&s, 0);
+	fpt_add(&q, &s);
+
+	/* the last operation: tan(R), or -cot(R) = V / -U for an odd N */
+	if (n & 1) {
+		p.sign = !p.sign;
+		fpt_last_div(&q, &p, &env);
+		return fpt_computed(dest, &q, &env);
+	}
+	fpt_last_div(&p, &q, &env);
+
+	return fpt_computed(dest, &p, &env);
 }
 
 struct fp_ext *fp_fasin(struct fp_ext *dest, struct fp_ext *src)

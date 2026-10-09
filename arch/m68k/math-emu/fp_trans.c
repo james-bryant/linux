@@ -305,6 +305,14 @@ static const struct {
 		[FPT_P(FPT_INF)]	= { FPT_R_NAN },
 		[FPT_N(FPT_INF)]	= { FPT_R_NAN },
 	},
+	[FPT_FTAN] = {
+		[FPT_P(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_N(FPT_ZERO)]	= { FPT_OPERAND },
+		[FPT_P(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_N(FPT_DENORM)]	= { FPT_OPERAND, FPT_INEX2 },
+		[FPT_P(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+		[FPT_N(FPT_INF)]	= { FPT_R_NAN, FPT_OPERR },
+	},
 	/* a denormalized operand as for FETOX (stentoxd, stwotoxd) */
 	[FPT_FTENTOX] = {
 		[FPT_P(FPT_ZERO)]	= { FPT_R_ONE },
