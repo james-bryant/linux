@@ -18,6 +18,8 @@
 #define LAB030_CPLD_TICK_STATUS		0x0c
 #define LAB030_CPLD_TICK_COUNT		0x10
 #define LAB030_CPLD_RESET		0x14
+#define LAB030_CPLD_I2C_DRIVE		0x18	/* bit 0 pulls SCL low, bit 1 SDA */
+#define LAB030_CPLD_I2C_PINS		0x1c	/* bit 0 SCL, bit 1 SDA, as on the pins */
 
 #define LAB030_TICK_CTRL_ENABLE		0x1
 #define LAB030_TICK_STATUS_PENDING	0x1	/* write 1 to clear */
@@ -45,5 +47,10 @@
 #define LAB030_CF_CTL_DEVCTL		0x0c
 #define LAB030_CF_CTL_DEVCTL_SIZE	0x2
 #define LAB030_CF_REGSHIFT		1
+
+/* I2C: the two lines above as GPIO lines 0 (SCL) and 1 (SDA); a DS3231 RTC */
+#define LAB030_I2C_SCL			0
+#define LAB030_I2C_SDA			1
+#define LAB030_RTC_I2C_ADDR		0x68
 
 #endif /* _ASM_M68K_LAB030_H */

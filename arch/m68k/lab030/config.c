@@ -6,10 +6,13 @@
 #include <linux/clockchips.h>
 #include <linux/clocksource.h>
 #include <linux/err.h>
+#include <linux/gpio/machine.h>
+#include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/ata_platform.h>
 #include <linux/serial_8250.h>
 #include <linux/serial_core.h>
@@ -195,6 +198,47 @@ static const struct pata_platform_info lab030_cf_data __initconst = {
 	.ioport_shift	= LAB030_CF_REGSHIFT,
 };
 
+/*
+ * The I2C bus: two open-drain lines in the CPLD.  The generic MMIO GPIO
+ * driver takes I2C_DRIVE as its direction register, so a line set to
+ * output is pulled low, and I2C_PINS as its data register; i2c-gpio drives
+ * the lines as emulated open-drain outputs, which is what the CPLD does.
+ * The CPLD ignores writes to I2C_PINS.
+ */
+static const struct resource lab030_i2c_gpio_resources[] __initconst = {
+	DEFINE_RES_MEM_NAMED(LAB030_CPLD_BASE + LAB030_CPLD_I2C_PINS, 4, "dat"),
+	DEFINE_RES_MEM_NAMED(LAB030_CPLD_BASE + LAB030_CPLD_I2C_DRIVE, 4, "dirout"),
+};
+
+static const struct property_entry lab030_i2c_gpio_properties[] __initconst = {
+	PROPERTY_ENTRY_BOOL("big-endian"),
+	PROPERTY_ENTRY_U32("ngpios", 2),
+	{ }
+};
+
+static const struct platform_device_info lab030_i2c_gpio_info __initconst = {
+	.name		= "basic-mmio-gpio",
+	.id		= PLATFORM_DEVID_NONE,
+	.res		= lab030_i2c_gpio_resources,
+	.num_res	= ARRAY_SIZE(lab030_i2c_gpio_resources),
+	.properties	= lab030_i2c_gpio_properties,
+};
+
+static struct gpiod_lookup_table lab030_i2c_gpiod_table = {
+	.dev_id		= "i2c-gpio.0",
+	.table		= {
+		GPIO_LOOKUP("basic-mmio-gpio", LAB030_I2C_SDA, "sda",
+			    GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN),
+		GPIO_LOOKUP("basic-mmio-gpio", LAB030_I2C_SCL, "scl",
+			    GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN),
+		{ }
+	},
+};
+
+static struct i2c_board_info lab030_i2c_devices[] __initdata = {
+	{ I2C_BOARD_INFO("ds3231", LAB030_RTC_I2C_ADDR) },
+};
+
 static int __init lab030_platform_init(void)
 {
 	struct platform_device *pdev;
@@ -215,6 +259,17 @@ static int __init lab030_platform_init(void)
 						 ARRAY_SIZE(lab030_cf_resources),
 						 &lab030_cf_data,
 						 sizeof(lab030_cf_data));
+	if (IS_ERR(pdev))
+		return PTR_ERR(pdev);
+
+	gpiod_add_lookup_table(&lab030_i2c_gpiod_table);
+	pdev = platform_device_register_full(&lab030_i2c_gpio_info);
+	if (IS_ERR(pdev))
+		return PTR_ERR(pdev);
+
+	i2c_register_board_info(0, lab030_i2c_devices,
+				ARRAY_SIZE(lab030_i2c_devices));
+	pdev = platform_device_register_simple("i2c-gpio", 0, NULL, 0);
 
 	return PTR_ERR_OR_ZERO(pdev);
 }
